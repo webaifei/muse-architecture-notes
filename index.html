@@ -1,0 +1,1442 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muse 的创新不在 agent loop 里</title>
+<meta name="description" content="把 Meta Muse 的安全架构从零实现一遍：两个信任域、Sentinel 裁决、凭据代理、SSRF 防御、privsep、tainted egress、状态机。八步，每步一个可运行 demo。">
+<style>
+:root{
+  --bg:#fbfaf7; --panel:#fff; --fg:#191817; --muted:#6d6a63; --line:#e7e3da;
+  --accent:#b45309; --accent-soft:#fdf3e3;
+  --sidebar:264px; --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#141413; --panel:#1b1b19; --fg:#ecebe7; --muted:#96938b; --line:#2c2b28;
+         --accent:#f0a45b; --accent-soft:#241d13; }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.85 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased}
+
+.progress{position:fixed;top:0;left:0;right:0;height:2px;z-index:50;background:transparent}
+.progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s linear}
+
+aside{position:fixed;top:0;bottom:0;left:0;width:var(--sidebar);padding:32px 20px 40px;
+  border-right:1px solid var(--line);overflow-y:auto;background:var(--panel)}
+.brand{font-size:13px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
+.brand-title{font-size:15px;font-weight:600;line-height:1.5;margin:0 0 24px;color:var(--fg)}
+aside nav{display:flex;flex-direction:column;gap:2px}
+aside nav a{display:flex;gap:10px;align-items:baseline;padding:8px 10px;border-radius:7px;
+  color:var(--muted);text-decoration:none;font-size:14px;line-height:1.5;transition:.15s}
+aside nav a:hover{background:var(--accent-soft);color:var(--fg)}
+aside nav a.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+aside nav .num{font:11px/1 var(--mono);opacity:.55}
+.sidebar-foot{margin-top:28px;padding-top:18px;border-top:1px solid var(--line);
+  font-size:12px;color:var(--muted);line-height:1.8}
+.sidebar-foot a{color:var(--muted)}
+
+main{margin-left:var(--sidebar);padding:0 56px 140px;max-width:900px}
+
+.hero{padding:88px 0 40px;border-bottom:1px solid var(--line)}
+.hero .kicker{font:12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
+.hero h1{font-size:40px;line-height:1.35;margin:0 0 20px;letter-spacing:-.01em}
+.hero p{font-size:17px;color:var(--muted);margin:0 0 28px;max-width:640px}
+.stats{display:flex;gap:28px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.stats b{color:var(--fg);font-weight:600}
+
+.loops{margin:36px 0 0;font:12px/1.7 var(--mono);color:var(--muted)}
+.loops .l1{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:12px 16px}
+.loops .l2{border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:8px;padding:12px 16px;margin:8px 0 8px 16px}
+.loops .l3{border:1px solid var(--line);border-left:3px solid var(--line);border-radius:8px;padding:12px 16px;margin:8px 0 0 16px}
+.loops em{font-style:normal;color:var(--fg)}
+
+.chapter{padding:52px 0 8px;scroll-margin-top:24px}
+.chapter-head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+.chapter-index{font:13px/1 var(--mono);color:var(--accent);padding-top:6px}
+.chapter-head h2{font-size:27px;margin:0;letter-spacing:-.01em}
+
+article h2{font-size:21px;margin:44px 0 14px;padding-top:8px}
+article h3{font-size:17px;margin:32px 0 10px;color:var(--fg)}
+article p{margin:0 0 18px}
+article strong{font-weight:600}
+article a{color:var(--accent)}
+article ul,article ol{padding-left:22px;margin:0 0 18px}
+article li{margin:6px 0}
+article blockquote{margin:0 0 22px;padding:12px 18px;border-left:3px solid var(--accent);
+  background:var(--accent-soft);border-radius:0 7px 7px 0;font-size:14px;color:var(--muted)}
+article blockquote p{margin:0}
+article hr{border:0;border-top:1px solid var(--line);margin:40px 0}
+article table{width:100%;border-collapse:collapse;margin:0 0 22px;font-size:14px}
+article th,article td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+article th{color:var(--muted);font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+article code{font:13px/1.5 var(--mono);background:var(--accent-soft);padding:2px 6px;border-radius:5px}
+.code{margin:0 0 24px;border-radius:10px;overflow:hidden;background:#1b1b1f}
+.code figcaption{font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  color:#8b8b93;padding:10px 16px;border-bottom:1px solid #2a2a30}
+.code pre{margin:0;padding:18px 16px;overflow-x:auto}
+.code code{font:13px/1.75 var(--mono);background:none;padding:0}
+.code .shiki{background:#1b1b1f !important}
+
+footer{margin-left:var(--sidebar);padding:40px 56px 90px;border-top:1px solid var(--line);
+  font-size:13px;color:var(--muted);max-width:900px}
+footer a{color:var(--accent)}
+
+@media (max-width:900px){
+  aside{position:static;width:auto;border-right:0;border-bottom:1px solid var(--line);padding:20px}
+  main,footer{margin-left:0;padding-left:22px;padding-right:22px}
+  .hero{padding-top:48px}.hero h1{font-size:29px}
+}
+</style>
+</head>
+<body>
+<div class="progress"><i id="bar"></i></div>
+
+<aside>
+  <div class="brand">META MUSE</div>
+  <p class="brand-title">Muse 的创新<br>不在 agent loop 里</p>
+  <nav><a href="#ch1" data-target="ch1"><span class="num">01</span>两个信任域</a>
+<a href="#ch2" data-target="ch2"><span class="num">02</span>提议不是命令</a>
+<a href="#ch3" data-target="ch3"><span class="num">03</span>Sentinel：授权不在对话里</a>
+<a href="#ch4" data-target="ch4"><span class="num">04</span>凭据代理：拿不到，比不泄露强</a>
+<a href="#ch5" data-target="ch5"><span class="num">05</span>出口网关：检查的和使用的是不是同一个东西</a>
+<a href="#ch6" data-target="ch6"><span class="num">06</span>privsep：改参数没有用</a>
+<a href="#ch7" data-target="ch7"><span class="num">07</span>tainted egress：让审批只在必要时打扰用户</a>
+<a href="#ch8" data-target="ch8"><span class="num">08</span>状态机：模型只能解释状态</a></nav>
+  <div class="sidebar-foot">
+    <a href="https://github.com/webaifei/muse-architecture-notes">源码仓库</a><br>
+    对照 <a href="https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse">Meta 官方博客</a>
+  </div>
+</aside>
+
+<main>
+  <header class="hero">
+    <div class="kicker">从零实现一遍安全架构</div>
+    <h1>Muse 的创新<br>不在 agent loop 里</h1>
+    <p>Meta 的 Muse 是一个个人 AI agent。它跑在一个用户专属的云 VM 里，能读你的邮件、改你的日历、开浏览器、跑 shell 命令。 网上讲它的架构时，大多在讲它的模型多强、工具多全。</p>
+    <div class="stats">
+      <span><b>8</b> 章</span>
+      <span><b>8</b> 个可运行文件</span>
+      <span>对照 <b>Meta 官方安全博客</b></span>
+    </div>
+    <div class="loops">
+      <div class="l1">如果 agent 被完全控制 <em>—— 最大破坏是什么</em>
+        <div class="l2">Host domain 控制面 <em>—— 拿不到的东西</em>
+          <div class="l3">Runtime cell 不可信域 <em>—— 能做的事</em></div>
+        </div>
+      </div>
+    </div>
+  </header>
+  <article>
+<section id="ch1" class="chapter">
+  <div class="chapter-head">
+    <span class="chapter-index">01</span>
+    <h2>两个信任域</h2>
+  </div>
+  <blockquote>
+<p><strong>代码</strong>：<code>code/step1-trust-domains.mjs</code><br><strong>官方来源</strong>：<a href="https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse">How We Built Safety Into Muse</a>（Meta AI Research, 2026-09-08）</p>
+</blockquote>
+<h2>我原以为 agent 的安全就是&quot;让模型别乱来&quot;</h2>
+<p>写一段更严格的 system prompt，加一个输出过滤器，再给工具加个权限检查——这是我以前对 agent 安全的理解。</p>
+<p>这套东西有个共同点：<strong>它们都在 agent 的进程里。</strong></p>
+<p>模型被提示注入说服了，它会做什么？它会尝试绕过你的检查。而只要那些检查跑在同一个进程里、同一份内存里，绕过就只是时间问题——它可以直接改掉那个变量，或者找到一条你没检查的调用路径。</p>
+<p>Muse 的答案是不在这个层面玩。</p>
+<h2>官方怎么说</h2>
+<blockquote>
+<p>The right mental model is <strong>two isolated security domains on one box</strong>, not an LLM powered agent with root.</p>
+</blockquote>
+<p>一台机器，两个域：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>里面放什么</th>
+<th>信任级别</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Runtime cell</strong></td>
+<td>Hatch daemon（核心 harness）、workspace、文件、所有二进制和工具</td>
+<td><strong>不可信</strong>——预期会处理攻击者控制的数据</td>
+</tr>
+<tr>
+<td><strong>Host domain</strong></td>
+<td><code>hatch-safety</code>、<code>privsep</code>、<code>hatch-authd</code>、<strong>Sentinel</strong>、Postgres、推理代理</td>
+<td>可信</td>
+</tr>
+</tbody></table>
+<p>还有一句关键的话：</p>
+<blockquote>
+<p>This split is important as the runtime cell is <strong>expected to process untrusted data</strong>.</p>
+</blockquote>
+<p>不是&quot;如果被攻破怎么办&quot;，而是<strong>假设它会被攻破</strong>。</p>
+<p>下面拆开讲它靠什么技术做到。</p>
+<hr>
+<h2>技术 1：user namespace —— 让容器里的 root 不是真的 root</h2>
+<p><strong>官方原文</strong>：</p>
+<blockquote>
+<p>Root inside the runtime cell is mapped to an unprivileged host user so runtime cell root is not host root.</p>
+</blockquote>
+<p><strong>原理</strong>：Linux 从 3.8 开始支持 <strong>user namespace</strong>，允许非特权用户创建一个新的用户命名空间。namespace 里维护一张 <strong>uid 映射表</strong>（<code>/proc/&lt;pid&gt;/uid_map</code>）：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>namespace 内    宿主上</span></span>
+<span class="line"><span>   0      →      100000</span></span>
+<span class="line"><span>   1      →      100001</span></span>
+<span class="line"><span>   ...</span></span></code></pre></figure><p>进程在 namespace 内看自己是 uid 0，但<strong>内核在检查权限时用的是宿主上那个 uid</strong>（100000）。于是：</p>
+<ul>
+<li>namespace 内可以&quot;以 root 身份&quot;做很多管理操作（装包、改文件属主）</li>
+<li>但那些操作的真正权限检查，落在宿主上一个普通用户身上 → 拒绝</li>
+</ul>
+<p><strong>这就是&quot;容器里的 root 不是宿主 root&quot;的实现方式</strong>，不需要任何特殊硬件，靠的是内核在映射表上做了一次翻译。</p>
+<p><strong>为什么重要</strong>：容器逃逸的经典路径是&quot;在容器里当 root，利用某个内核漏洞拿到宿主 root&quot;。有了 user namespace，即使拿到容器内 root，宿主的 uid 依然是 100000。</p>
+<hr>
+<h2>技术 2：seccomp —— 把不需要的系统调用整个关掉</h2>
+<p><strong>官方原文</strong>：</p>
+<blockquote>
+<p>It also gets ... <strong>filtered system calls (for example no <code>io_uring</code>)</strong>.</p>
+</blockquote>
+<p><strong>原理</strong>：<strong>seccomp</strong>（secure computing mode）允许一个进程加载一段 cBPF 程序。内核在<strong>每个系统调用的入口</strong>执行这段程序，根据返回值决定：</p>
+<table>
+<thead>
+<tr>
+<th>返回值</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>SECCOMP_RET_ALLOW</code></td>
+<td>放行</td>
+</tr>
+<tr>
+<td><code>SECCOMP_RET_ERRNO</code></td>
+<td>返回错误码，就像 syscall 不存在</td>
+</tr>
+<tr>
+<td><code>SECCOMP_RET_KILL_PROCESS</code></td>
+<td>直接杀掉进程</td>
+</tr>
+<tr>
+<td><code>SECCOMP_RET_TRAP</code></td>
+<td>给进程发 SIGSYS</td>
+</tr>
+</tbody></table>
+<p>两个性质很关键：</p>
+<ol>
+<li><strong>只能收窄，不能放宽。</strong> 一旦设了 <code>no_new_privs</code>，过滤器就不能撤销，也不能加白名单。</li>
+<li><strong>在内核里执行。</strong> 被过滤的进程没有任何办法绕过——它连发起那个 syscall 都做不到。</li>
+</ol>
+<p><strong>为什么专门点名 <code>io_uring</code>？</strong></p>
+<p><code>io_uring</code> 是一套高性能异步 I/O 接口。它和传统 syscall 的区别是：提交操作不需要每次陷入内核，而是写进一块<strong>共享内存环形缓冲区</strong>，内核在后台消费。</p>
+<p>这带来了两个问题：</p>
+<ul>
+<li><strong>很多操作不经过常规 syscall 路径</strong>，所以传统的 syscall 级别的检查（包括 seccomp 过滤器）看不到它们</li>
+<li>它本身的历史上出过多次严重漏洞，是容器逃逸的常见入口</li>
+</ul>
+<p>所以 Muse 直接禁掉它。这是&quot;<strong>把不需要的攻击面整个关掉，而不是去过滤它</strong>&quot;的典型做法——比逐条检查可靠得多。</p>
+<hr>
+<h2>技术 3：Linux capabilities —— 把 root 拆成 40 个开关</h2>
+<p><strong>官方原文</strong>：</p>
+<blockquote>
+<p>... and <strong>limited kernel capabilities (for example no <code>CAP_SYS_PTRACE</code> and no <code>CAP_NET_ADMIN</code>)</strong>.</p>
+</blockquote>
+<p><strong>原理</strong>：传统 Unix 里，root 是一个<strong>整体</strong>——要么什么都能做，要么什么都不能。Linux capabilities 把它拆成大约 40 个独立的位，每个位控制一类特权：</p>
+<table>
+<thead>
+<tr>
+<th>capability</th>
+<th>能做什么</th>
+<th>为什么容器里不该有</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>CAP_SYS_PTRACE</code></td>
+<td>ptrace 其他进程（读别人内存、改别人代码）</td>
+<td>能读到宿主上同 uid 的进程内存</td>
+</tr>
+<tr>
+<td><code>CAP_NET_ADMIN</code></td>
+<td>改网络接口、路由表、防火墙规则</td>
+<td>能改网络配置，绕过出口策略</td>
+</tr>
+<tr>
+<td><code>CAP_SYS_ADMIN</code></td>
+<td>mount、改 cgroup 等等</td>
+<td>事实上的&quot;新 root&quot;，危险程度等同于旧 root</td>
+</tr>
+</tbody></table>
+<p><strong>关键点</strong>：这些位是<strong>独立</strong>的。一个进程可以同时&quot;是 uid 0&quot;和&quot;没有 CAP_NET_ADMIN&quot;。</p>
+<p>容器运行时（包括 systemd-nspawn）会在启动时 drop 掉一个 capability 集合。于是即使你在容器里当上了 root：</p>
+<ul>
+<li>你不能 ptrace 宿主的进程</li>
+<li>你不能改网络配置</li>
+<li>你不能 mount</li>
+</ul>
+<p><strong>为什么 Muse 要点名这两个</strong>：<code>CAP_SYS_PTRACE</code> 会直接威胁&quot;两个信任域&quot;的隔离——能读别的进程内存，就等于能读控制面的秘密。<code>CAP_NET_ADMIN</code> 会威胁出口策略——能改路由，就能绕过 forward proxy。</p>
+<hr>
+<h2>技术 4：SO_PEERCRED —— 内核告诉你对端是谁</h2>
+<p><strong>官方原文</strong>：</p>
+<blockquote>
+<p>All communication between the runtime cell and other services in the VM happens via <strong>Unix domain sockets with <code>SO_PEERCRED</code> and peer ACLs</strong>. This provides kernel authenticated, least-privilege interprocess communication <strong>with no secrets to steal</strong>.</p>
+</blockquote>
+<p><strong>原理</strong>：<code>SO_PEERCRED</code> 是 Unix domain socket 的一个 socket option。服务端调用 <code>getsockopt(fd, SOL_SOCKET, SO_PEERCRED, ...)</code>，<strong>内核返回连接对端的 pid、uid、gid</strong>。</p>
+<p>为什么这个设计重要：</p>
+<ul>
+<li><strong>身份由内核填写，对端无法伪造。</strong> 进程不能声称自己是别的 uid。</li>
+<li><strong>通道上不需要放任何密钥。</strong> 传统的 IPC 认证要传 token / 共享密钥，而任何放在通道上的东西都可能被偷。SO_PEERCRED 不需要传——身份是内核附带的。</li>
+<li><strong>可以做 per-caller 的 ACL。</strong> 服务端可以规定&quot;只有 uid 1000 且 pid 属于某个 cgroup 的进程能调用这个方法&quot;。</li>
+</ul>
+<p>最后那句 <strong>&quot;with no secrets to steal&quot;</strong> 是精髓：<strong>如果一个通道本身没有秘密，那它就没有可偷的东西。</strong></p>
+<p>macOS 上的对应物是 <code>LOCAL_PEERCRED</code> / <code>LOCAL_PEERPID</code>。</p>
+<hr>
+<h2>Demo：在这台机器上真的做了</h2>
+<p><code>code/step1-trust-domains.mjs</code> 起了两个进程：</p>
+<ul>
+<li><strong>Host domain</strong>：持有真实凭据，只暴露一个 <code>propose</code> 接口</li>
+<li><strong>Runtime cell</strong>：跑在操作系统沙箱里，通过 Unix socket 和宿主通信</li>
+</ul>
+<p>三个攻击场景：</p>
+<figure class="code"><figcaption>sh</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#80A665">node</span><span style="color:#C98A7D"> code/step1-trust-domains.mjs</span></span></code></pre></figure><figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>【Host domain 已就绪】持有凭据，只暴露 propose</span></span>
+<span class="line"><span>  控制面 socket 权限：0600（只有同 uid 的进程能连）</span></span>
+<span class="line"><span>  ── 攻击面 1：直接从文件系统偷凭据 ──</span></span>
+<span class="line"><span>    ✅ 被挡住：EPERM（内核拒绝，不是我们的代码在检查）</span></span>
+<span class="line"><span>  ── 攻击面 2：让控制面给自己发许可证 ──</span></span>
+<span class="line"><span>    ✅ unknown op: grant — 控制面不提供授权接口——授权只能来自用户</span></span>
+<span class="line"><span>  ── 攻击面 3：自己直接执行动作 ──</span></span>
+<span class="line"><span>    ✅ cell 里没有 GitHub 凭据，也没有出网路径，动作根本执行不了</span></span></code></pre></figure><p><strong>攻击面 1 是真的内核级拒绝。</strong> 用的是 macOS 的 <strong>Seatbelt</strong>（<code>sandbox-exec</code>）：策略由内核在系统调用层面执行，cell 进程没有任何办法绕过——它不是&quot;我们的代码检查后拒绝&quot;，是内核让 <code>readFileSync</code> 直接返回 <code>EPERM</code>。</p>
+<p><strong>攻击面 2 是这一步最重要的一课。</strong> 注意控制面<strong>根本不存在</strong> <code>grant</code> 这个操作。不是它检查后拒绝了，是<strong>没有那条代码路径</strong>。</p>
+<p>这两件事的区别很大：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>拦截式</th>
+<th>无路径式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>怎么做</td>
+<td>写检查逻辑，发现越权就返回错误</td>
+<td>根本不实现那个能力</td>
+</tr>
+<tr>
+<td>被绕过的前提</td>
+<td>找到检查的漏洞</td>
+<td>找到不存在的代码</td>
+</tr>
+<tr>
+<td>代码演进时</td>
+<td>新增路径可能忘加检查</td>
+<td>不可能&quot;忘了加&quot;</td>
+</tr>
+</tbody></table>
+<p>Muse 的 &quot;the agent can&#39;t give itself a license&quot; 属于后者。<strong>它不是禁止，是没有。</strong></p>
+<hr>
+<h2>技术差异的诚实说明</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Muse（Linux）</th>
+<th>本 demo（macOS）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>隔离机制</td>
+<td><code>systemd-nspawn</code> + user namespace + seccomp + capabilities</td>
+<td>Seatbelt（<code>sandbox-exec</code>）</td>
+</tr>
+<tr>
+<td>策略形态</td>
+<td><strong>deny-by-default</strong> 白名单</td>
+<td>allow-default + 精确 deny</td>
+</tr>
+<tr>
+<td>内核强制</td>
+<td>是</td>
+<td><strong>是</strong>（这一点相同）</td>
+</tr>
+</tbody></table>
+<p><strong>为什么我用反向写法</strong>：Seatbelt 的 profile 要给一个完整的 Node 运行时写白名单，需要逐个枚举 dyld 缓存、mach service、共享内存等依赖——我试了，<code>(deny default)</code> 下 Node 直接 <code>SIGABRT</code>。</p>
+<p>所以本 demo 用&quot;默认允许 + 精确拒绝凭据文件&quot;来演示。<strong>机制是同一个：策略在内核里，不在 agent 手里。</strong></p>
+<p>Muse 在生产里用白名单，因为它的 cell 镜像可以预先精确枚举依赖。</p>
+<hr>
+<h2>一个真实的坑：路径规范化</h2>
+<p>第一版 demo <strong>没挡住</strong>。cell 明明在沙箱里，却读到了宿主凭据。</p>
+<p>原因：macOS 上 <code>/var</code> 是 <code>/private/var</code> 的<strong>符号链接</strong>。我生成的临时目录路径是 <code>/var/folders/...</code>，写进 deny 规则用的就是这个。但 Seatbelt <strong>按解析后的真实路径匹配</strong>，实际路径是 <code>/private/var/folders/...</code>——两条规则对不上，策略静默失效。</p>
+<p>修法是一行：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">const</span><span style="color:#BD976A"> workDir</span><span style="color:#666666"> =</span><span style="color:#80A665"> realpathSync</span><span style="color:#666666">(</span><span style="color:#80A665">mkdtempSync</span><span style="color:#666666">(</span><span style="color:#80A665">join</span><span style="color:#666666">(</span><span style="color:#80A665">tmpdir</span><span style="color:#666666">(),</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">muse-</span><span style="color:#C98A7D77">'</span><span style="color:#666666">)))</span></span></code></pre></figure><p><strong>这是安全策略里最经典的失效模式之一</strong>：策略写对了语法，但没写对路径。而且它失败的方式是&quot;静默放行&quot;——你只会看到攻击成功，不会看到任何报错。</p>
+<p>后面几步会反复遇到同一个主题：<strong>安全检查最危险的失败模式是&quot;看起来生效了，其实没有&quot;。</strong></p>
+<hr>
+<h2>这一章要记住的</h2>
+<p><strong>&quot;agent 无法给自己发许可证&quot;应该是一个结构事实，不是一个检查结果。</strong></p>
+<p>结构事实的做法：控制面没有那个接口，通道不携带秘密，内核拒绝那些调用。三者都不依赖&quot;我们记得检查&quot;。</p>
+<p>下一章讲模型和这个结构之间那道边界：<strong>模型输出的是数据，不是命令。</strong></p>
+
+</section>
+
+<section id="ch2" class="chapter">
+  <div class="chapter-head">
+    <span class="chapter-index">02</span>
+    <h2>提议不是命令</h2>
+  </div>
+  <blockquote>
+<p><strong>代码</strong>：<code>code/step2-action-proposal.mjs</code><br><strong>官方来源</strong>：<a href="https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse">How We Built Safety Into Muse</a></p>
+</blockquote>
+<h2>我原以为给模型一个 JSON Schema 就够了</h2>
+<p>模型输出 JSON，我用 schema 校验一下，通过了就执行——这是我以前的写法。</p>
+<p>问题不在&quot;校验了没有&quot;，在于<strong>校验通过之后你拿什么去执行</strong>。</p>
+<p>如果你执行的是<strong>模型给的那个对象</strong>，那么：</p>
+<ul>
+<li>它上面可能有校验时没看的字段</li>
+<li>它的原型链上可能有东西</li>
+<li>下游任何一次 <code>Object.assign</code> / 展开 / 递归合并，都可能把没检查过的东西带进去</li>
+</ul>
+<p>Muse 的做法是：模型的输出从来不会被直接执行，它只是一份<strong>提议（proposal）</strong>，经过边界校验后<strong>重新构造</strong>成内部对象，才进入后续流程。</p>
+<h2>官方怎么说</h2>
+<blockquote>
+<p>When Muse wants to take action via a connector, the relevant connector tool is invoked in the runtime cell. <strong>That submits a request to Sentinel describing the connector, which method is to be invoked, the class of action, its scope, and context of what the user asked for</strong> — from which Sentinel generates a user-visible purpose.</p>
+</blockquote>
+<p>注意它描述的是一个<strong>结构化请求</strong>：connector、method、action class、scope、用户上下文。五样东西，每一样都是有限的、可枚举的。</p>
+<p>模型不能&quot;提议一个动作&quot;，它只能&quot;从已声明的方法里挑一个&quot;。</p>
+<hr>
+<h2>技术 1：能力发现 —— 没声明的东西不存在</h2>
+<p>官方在讲 GitHub 例子时列的第一道判断：</p>
+<blockquote>
+<p><strong>能力发现</strong>：Skill 是否定义 list/read repository → <strong>未定义则不可调用</strong></p>
+</blockquote>
+<p><strong>原理</strong>：每个 connector 有一份 <strong>manifest</strong>，显式列出它支持哪些方法、每个方法的参数是什么。模型看到的工具列表是从这份 manifest 生成的；执行侧校验也查同一份 manifest。</p>
+<p><strong>为什么这比&quot;检查参数&quot;更根本</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>做法</th>
+<th>攻击者需要什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>检查参数是否合法</td>
+<td>找到检查逻辑的漏洞</td>
+</tr>
+<tr>
+<td>检查方法是否已声明</td>
+<td><strong>让一个不存在的方法出现</strong></td>
+</tr>
+</tbody></table>
+<p>第二种在结构上就不成立。<code>github.delete_repository</code> 如果没写进 manifest，那它不是一个&quot;被拒绝的调用&quot;，而是<strong>一个没有对应实现的字符串</strong>。</p>
+<p>Demo 里对应的两条：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>  ▸ 模型发明了一个方法</span></span>
+<span class="line"><span>    🛑 拒绝 [unknown_method] "github" 没有声明方法 "delete_repository"</span></span>
+<span class="line"><span>  ▸ 模型发明了一个 connor</span></span>
+<span class="line"><span>    🛑 拒绝 [unknown_connector] 没有名为 "shell" 的 connector</span></span></code></pre></figure><p>第二条尤其重要——模型想访问 <code>shell</code>，但系统里没有 shell connector。<strong>它不是在请求一个被禁止的能力，而是在请求一个不存在的名字。</strong></p>
+<hr>
+<h2>技术 2：字段白名单，不是黑名单</h2>
+<p><strong>原理</strong>：校验字段时只有两种写法：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#758575DD">// 黑名单：拒绝危险字段</span></span>
+<span class="line"><span style="color:#4D9375">if</span><span style="color:#666666"> (</span><span style="color:#BD976A">key</span><span style="color:#CB7676"> ===</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">exec</span><span style="color:#C98A7D77">'</span><span style="color:#CB7676"> ||</span><span style="color:#BD976A"> key</span><span style="color:#CB7676"> ===</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">__proto__</span><span style="color:#C98A7D77">'</span><span style="color:#666666">)</span><span style="color:#80A665"> reject</span><span style="color:#666666">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#758575DD">// 白名单：只接受已知字段，其余一律拒绝</span></span>
+<span class="line"><span style="color:#4D9375">if</span><span style="color:#666666"> (</span><span style="color:#CB7676">!</span><span style="color:#BD976A">ALLOWED</span><span style="color:#666666">.</span><span style="color:#80A665">has</span><span style="color:#666666">(</span><span style="color:#BD976A">key</span><span style="color:#666666">))</span><span style="color:#80A665"> reject</span><span style="color:#666666">()</span></span></code></pre></figure><p>黑名单的问题是你得<strong>穷举所有危险的名字</strong>——而攻击者只需要找一个你没想到的。</p>
+<p>Demo 里用的是白名单：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">const</span><span style="color:#BD976A"> PROPOSAL_FIELDS</span><span style="color:#666666"> =</span><span style="color:#CB7676"> new</span><span style="color:#80A665"> Set</span><span style="color:#666666">([</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">connector</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">method</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">args</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">scope</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">userContext</span><span style="color:#C98A7D77">'</span><span style="color:#666666">])</span></span>
+<span class="line"><span style="color:#4D9375">for</span><span style="color:#666666"> (</span><span style="color:#CB7676">const</span><span style="color:#BD976A"> key</span><span style="color:#CB7676"> of</span><span style="color:#BD976A"> Object</span><span style="color:#666666">.</span><span style="color:#80A665">keys</span><span style="color:#666666">(</span><span style="color:#BD976A">raw</span><span style="color:#666666">))</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#4D9375">  if</span><span style="color:#666666"> (</span><span style="color:#CB7676">!</span><span style="color:#BD976A">PROPOSAL_FIELDS</span><span style="color:#666666">.</span><span style="color:#80A665">has</span><span style="color:#666666">(</span><span style="color:#BD976A">key</span><span style="color:#666666">))</span><span style="color:#4D9375"> throw</span><span style="color:#CB7676"> new</span><span style="color:#80A665"> ProposalRejected</span><span style="color:#666666">(</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">unknown_field</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#666666"> ...)</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>  ▸ 模型发明了一个字段 exec</span></span>
+<span class="line"><span>    🛑 拒绝 [unknown_field] 不允许的字段 "exec"</span></span></code></pre></figure><p><strong>白名单的代价</strong>：新增字段时必须同时改这里，否则合法请求会被拒。这是<strong>故意的</strong>——它把&quot;新增字段&quot;变成一个必须显式做的动作，而不是一个可能被遗漏的检查。</p>
+<hr>
+<h2>技术 3：参数也要白名单 —— 越权常常藏在&quot;多给一个参数&quot;里</h2>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>  ▸ 越权参数：给 list_repositories 塞一个 token</span></span>
+<span class="line"><span>    🛑 拒绝 [unknown_arg] 方法 "list_repositories" 不认识参数 "token"</span></span></code></pre></figure><p>这条演示的是一个很实际的攻击模式。假设下游的 connector 代码写成：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">const</span><span style="color:#BD976A"> token</span><span style="color:#666666"> =</span><span style="color:#BD976A"> args</span><span style="color:#666666">.</span><span style="color:#BD976A">token</span><span style="color:#CB7676"> ??</span><span style="color:#BD976A"> authd</span><span style="color:#666666">.</span><span style="color:#80A665">getCredential</span><span style="color:#666666">(</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">github</span><span style="color:#C98A7D77">'</span><span style="color:#666666">)</span></span></code></pre></figure><p>看起来无害——&quot;没传就用默认的&quot;。但如果模型能传 <code>token</code>，它就能<strong>用自己的值覆盖掉宿主注入的凭据</strong>。</p>
+<p>Muse 在 privsep 那层的说法正好命中这个：</p>
+<blockquote>
+<p>Each worker is identified by its <code>cgroup</code> and has explicit credential allowlists. <strong>A calendar worker cannot ask authd for an email credential simply by changing a request parameter.</strong></p>
+</blockquote>
+<p><strong>&quot;改一个请求参数&quot;是这条攻击面的统一描述。</strong> 防御方式也一样统一：参数集合必须白名单，多一个都不行。</p>
+<hr>
+<h2>技术 4：原型污染 —— 为什么返回新对象</h2>
+<p>JavaScript 有一个别处没有的东西：<strong>每个对象都有一条原型链</strong>。</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">const</span><span style="color:#BD976A"> raw</span><span style="color:#666666"> =</span><span style="color:#BD976A"> JSON</span><span style="color:#666666">.</span><span style="color:#80A665">parse</span><span style="color:#666666">(</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">{"connector":"github","__proto__":{"isAdmin":true}}</span><span style="color:#C98A7D77">'</span><span style="color:#666666">)</span></span></code></pre></figure><p><code>JSON.parse</code> 会把 <code>__proto__</code> 创建成一个<strong>普通自有属性</strong>（用的是 <code>CreateDataProperty</code>，不触发 setter）。所以：</p>
+<ul>
+<li><code>Object.keys(raw)</code> <strong>会</strong>包含 <code>__proto__</code> → 白名单检查能拦住</li>
+<li><code>raw.__proto__</code> 返回的是那个自有属性值（自有属性遮蔽了 <code>Object.prototype</code> 上的访问器）</li>
+</ul>
+<p>但如果校验函数<strong>返回原始对象</strong>，危险就转移到下游了。很多库会做这种合并：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">function</span><span style="color:#80A665"> merge</span><span style="color:#666666">(</span><span style="color:#BD976A">target</span><span style="color:#666666">,</span><span style="color:#BD976A"> source</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#4D9375">  for</span><span style="color:#666666"> (</span><span style="color:#CB7676">const</span><span style="color:#BD976A"> key</span><span style="color:#CB7676"> in</span><span style="color:#BD976A"> source</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#4D9375">    if</span><span style="color:#666666"> (</span><span style="color:#CB7676">typeof</span><span style="color:#BD976A"> source</span><span style="color:#666666">[</span><span style="color:#BD976A">key</span><span style="color:#666666">]</span><span style="color:#CB7676"> ===</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">object</span><span style="color:#C98A7D77">'</span><span style="color:#666666">)</span><span style="color:#80A665"> merge</span><span style="color:#666666">(</span><span style="color:#BD976A">target</span><span style="color:#666666">[</span><span style="color:#BD976A">key</span><span style="color:#666666">],</span><span style="color:#BD976A"> source</span><span style="color:#666666">[</span><span style="color:#BD976A">key</span><span style="color:#666666">])</span></span>
+<span class="line"><span style="color:#4D9375">    else</span><span style="color:#BD976A"> target</span><span style="color:#666666">[</span><span style="color:#BD976A">key</span><span style="color:#666666">]</span><span style="color:#666666"> =</span><span style="color:#BD976A"> source</span><span style="color:#666666">[</span><span style="color:#BD976A">key</span><span style="color:#666666">]</span></span>
+<span class="line"><span style="color:#666666">  }</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p><code>merge({}, raw)</code> 走到 <code>__proto__</code> 时，<code>target[key] = ...</code> <strong>触发的是 setter</strong>，于是 <code>target</code> 的原型被改掉。如果 <code>target</code> 恰好是 <code>Object.prototype</code>（某些库的默认参数就是它），<strong>整个进程里所有对象</strong>都获得 <code>isAdmin</code>。</p>
+<p>这就是 <strong>prototype pollution</strong>——一次污染，全局生效。</p>
+<p><strong>防御有两层</strong>：</p>
+<ol>
+<li><strong>拒绝未知字段</strong>（白名单），让 <code>__proto__</code> 根本进不来</li>
+<li><strong>返回重新构造的对象</strong>，而不是原始输入</li>
+</ol>
+<p>第 2 层在 demo 里是这么写的：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#4D9375">return</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#B8A965">  connector</span><span style="color:#666666">:</span><span style="color:#BD976A"> raw</span><span style="color:#666666">.</span><span style="color:#BD976A">connector</span><span style="color:#666666">,</span></span>
+<span class="line"><span style="color:#B8A965">  method</span><span style="color:#666666">:</span><span style="color:#BD976A"> raw</span><span style="color:#666666">.</span><span style="color:#BD976A">method</span><span style="color:#666666">,</span></span>
+<span class="line"><span style="color:#B8A965">  actionClass</span><span style="color:#666666">:</span><span style="color:#BD976A"> method</span><span style="color:#666666">.</span><span style="color:#BD976A">actionClass</span><span style="color:#666666">,</span></span>
+<span class="line"><span style="color:#758575DD">  // 只从声明过的参数里取值，其余一律丢弃</span></span>
+<span class="line"><span style="color:#B8A965">  args</span><span style="color:#666666">:</span><span style="color:#BD976A"> Object</span><span style="color:#666666">.</span><span style="color:#80A665">fromEntries</span><span style="color:#666666">(</span><span style="color:#BD976A">declared</span><span style="color:#666666">.</span><span style="color:#80A665">map</span><span style="color:#666666">((</span><span style="color:#BD976A">k</span><span style="color:#666666">)</span><span style="color:#666666"> =></span><span style="color:#666666"> [</span><span style="color:#BD976A">k</span><span style="color:#666666">,</span><span style="color:#BD976A"> args</span><span style="color:#666666">[</span><span style="color:#BD976A">k</span><span style="color:#666666">]])),</span></span>
+<span class="line"><span style="color:#B8A965">  scope</span><span style="color:#666666">:</span><span style="color:#666666"> ...,</span></span>
+<span class="line"><span style="color:#B8A965">  userContext</span><span style="color:#666666">:</span><span style="color:#666666"> ...,</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p><strong>返回值的原型是全新的 <code>Object.prototype</code>，和模型的输入没有任何引用关系。</strong> 下游无论怎么合并、展开、序列化，都碰不到输入里的额外属性。</p>
+<p>顺带一提：DeepSeek Harness 的 PTC 运行时也踩过同一个点，它的契约里写着命名空间必须用 <strong>null-prototype</strong> 构造，这样 <code>__proto__</code>、<code>constructor</code> 这类名字会被当普通属性处理——同一类问题的另一种解法。</p>
+<hr>
+<h2>技术 5：fail-closed，而不是 fail-open</h2>
+<p>看 demo 里校验函数的结构：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#4D9375">for</span><span style="color:#666666"> (</span><span style="color:#CB7676">const</span><span style="color:#BD976A"> key</span><span style="color:#CB7676"> of</span><span style="color:#BD976A"> Object</span><span style="color:#666666">.</span><span style="color:#80A665">keys</span><span style="color:#666666">(</span><span style="color:#BD976A">raw</span><span style="color:#666666">))</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#4D9375">  if</span><span style="color:#666666"> (</span><span style="color:#CB7676">!</span><span style="color:#BD976A">PROPOSAL_FIELDS</span><span style="color:#666666">.</span><span style="color:#80A665">has</span><span style="color:#666666">(</span><span style="color:#BD976A">key</span><span style="color:#666666">))</span><span style="color:#4D9375"> throw</span><span style="color:#CB7676"> new</span><span style="color:#80A665"> ProposalRejected</span><span style="color:#666666">(...)</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p><strong>任何一步不通过就抛错</strong>，没有&quot;尽力而为&quot;的分支。</p>
+<p>对比一下常见的 fail-open 写法：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#4D9375">try</span><span style="color:#666666"> {</span><span style="color:#80A665"> validate</span><span style="color:#666666">(</span><span style="color:#BD976A">raw</span><span style="color:#666666">)</span><span style="color:#666666"> }</span><span style="color:#4D9375"> catch</span><span style="color:#666666"> {</span><span style="color:#758575DD"> /* 校验失败就算了，继续执行 */</span><span style="color:#666666"> }</span></span></code></pre></figure><p>这种代码在正常路径上测不出来，只有在被攻击时才暴露。</p>
+<p>Muse 整个架构都是 fail-closed 的：Sentinel 的三态是 <code>allow / deny / ask</code>——<strong>没有&quot;默认放行&quot;这一档</strong>。拿不准就是 <code>ask</code>，而不是 <code>allow</code>。</p>
+<hr>
+<h2>Demo 跑出来</h2>
+<figure class="code"><figcaption>sh</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#80A665">node</span><span style="color:#C98A7D"> code/step2-action-proposal.mjs</span></span></code></pre></figure><p>七条提议，一条通过、六条被拒：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>  ▸ 正常提议                              ✅ 接受</span></span>
+<span class="line"><span>  ▸ 模型发明了一个字段 exec                🛑 unknown_field</span></span>
+<span class="line"><span>  ▸ 模型发明了一个方法                     🛑 unknown_method</span></span>
+<span class="line"><span>  ▸ 模型发明了一个 connector               🛑 unknown_connector</span></span>
+<span class="line"><span>  ▸ 越权参数 token                         🛑 unknown_arg</span></span>
+<span class="line"><span>  ▸ 原型污染尝试                           🛑 unknown_field "__proto__"</span></span>
+<span class="line"><span>  ▸ 参数超长                               🛑 arg_too_long</span></span></code></pre></figure><p><strong>每一条被拒的提议，如果直接 dispatch，都会变成一个真实的越权动作。</strong></p>
+<hr>
+<h2>这一章要记住的</h2>
+<p><strong>模型的输出是数据，不是命令。</strong></p>
+<p>判断标准很简单：<strong>从模型输出到真实副作用之间，有没有一次&quot;重新构造&quot;？</strong></p>
+<ul>
+<li>如果执行的是模型给的对象 → 你只是&quot;检查&quot;了它，它还是它的</li>
+<li>如果执行的是重新构造的内部对象 → 模型给的东西在边界上就已经不存在了</li>
+</ul>
+<p>下一章讲 Sentinel：当提议已经干净了，谁来决定它能不能被执行。</p>
+
+</section>
+
+<section id="ch3" class="chapter">
+  <div class="chapter-head">
+    <span class="chapter-index">03</span>
+    <h2>Sentinel：授权不在对话里</h2>
+  </div>
+  <blockquote>
+<p><strong>代码</strong>：<code>code/step3-sentinel.mjs</code><br><strong>官方来源</strong>：<a href="https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse">How We Built Safety Into Muse</a></p>
+</blockquote>
+<h2>我原以为审批就是&quot;弹个窗问用户&quot;</h2>
+<p>用户点了允许，然后呢？</p>
+<p>如果&quot;用户已允许&quot;这个事实存在某个变量里、或者某条消息里，那它就是一个<strong>可以被污染的输入</strong>。模型只要能在上下文里写一句&quot;用户已经同意了&quot;，剩下的就靠下游代码有没有检查。</p>
+<p>Muse 的做法是：<strong>审批根本不经过对话。</strong></p>
+<h2>官方怎么说</h2>
+<blockquote>
+<p>Sentinel sends that request <strong>directly to the Muse client</strong>, where a dialog is presented to the user directly within the client UI — <strong>not via their conversation with Muse</strong> — and their answer is routed <strong>directly back to Sentinel</strong>.</p>
+</blockquote>
+<blockquote>
+<p>Approvals granted via the human in the loop system are <strong>strict capabilities, not conversational suggestions</strong>. They&#39;re bound to the particular connector/destination and use case.</p>
+</blockquote>
+<p>两句话点出两件事：</p>
+<ol>
+<li><strong>通道不同</strong>：问题从 Sentinel → 客户端 → Sentinel，模型既看不见也改不了</li>
+<li><strong>性质不同</strong>：授权是一个 capability（能力凭证），不是一句建议</li>
+</ol>
+<hr>
+<h2>技术 1：capability，而不是 identity</h2>
+<p>传统的权限模型是 <strong>RBAC</strong>（基于角色）：你是管理员，所以你什么都能做。</p>
+<p><strong>capability-based authorization</strong> 换了个方向：授权是<strong>一张具体的票</strong>，票上写着能对什么做什么。</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>RBAC</th>
+<th>capability</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>授权粒度</td>
+<td>主体（你是谁）</td>
+<td>客体 + 动作（能对什么做什么）</td>
+</tr>
+<tr>
+<td>检查方式</td>
+<td>查你的角色</td>
+<td>出示票，票面必须<strong>精确匹配</strong></td>
+</tr>
+<tr>
+<td>权限扩大</td>
+<td>换个角色就行</td>
+<td>得重新开票</td>
+</tr>
+</tbody></table>
+<p>Demo 里那张票长这样：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#666666">{</span></span>
+<span class="line"><span style="color:#80A665">  connector</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">github</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span></span>
+<span class="line"><span style="color:#80A665">  method</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">create_issue</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span></span>
+<span class="line"><span style="color:#80A665">  actionClass</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">write</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span></span>
+<span class="line"><span style="color:#80A665">  resource</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">repoA</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#758575DD">          // ← 资源写死在票上</span></span>
+<span class="line"><span style="color:#80A665">  kind</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">session</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span></span>
+<span class="line"><span style="color:#80A665">  expiresAt</span><span style="color:#666666">:</span><span style="color:#666666"> ...,</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p>匹配逻辑必须<strong>逐字段精确</strong>：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#4D9375">if</span><span style="color:#666666"> (</span><span style="color:#BD976A">g</span><span style="color:#666666">.</span><span style="color:#BD976A">connector</span><span style="color:#CB7676"> !==</span><span style="color:#BD976A"> proposal</span><span style="color:#666666">.</span><span style="color:#BD976A">connector</span><span style="color:#666666">)</span><span style="color:#4D9375"> continue</span></span>
+<span class="line"><span style="color:#4D9375">if</span><span style="color:#666666"> (</span><span style="color:#BD976A">g</span><span style="color:#666666">.</span><span style="color:#BD976A">method</span><span style="color:#CB7676"> !==</span><span style="color:#BD976A"> proposal</span><span style="color:#666666">.</span><span style="color:#BD976A">method</span><span style="color:#666666">)</span><span style="color:#4D9375"> continue</span></span>
+<span class="line"><span style="color:#4D9375">if</span><span style="color:#666666"> (</span><span style="color:#BD976A">g</span><span style="color:#666666">.</span><span style="color:#BD976A">actionClass</span><span style="color:#CB7676"> !==</span><span style="color:#BD976A"> proposal</span><span style="color:#666666">.</span><span style="color:#BD976A">actionClass</span><span style="color:#666666">)</span><span style="color:#4D9375"> continue</span></span>
+<span class="line"><span style="color:#4D9375">if</span><span style="color:#666666"> (</span><span style="color:#BD976A">g</span><span style="color:#666666">.</span><span style="color:#BD976A">resource</span><span style="color:#CB7676"> !==</span><span style="color:#CB7676"> undefined</span><span style="color:#CB7676"> &#x26;&#x26;</span><span style="color:#BD976A"> g</span><span style="color:#666666">.</span><span style="color:#BD976A">resource</span><span style="color:#CB7676"> !==</span><span style="color:#BD976A"> context</span><span style="color:#666666">.</span><span style="color:#BD976A">resource</span><span style="color:#666666">)</span><span style="color:#4D9375"> continue</span></span></code></pre></figure><p><strong>为什么&quot;精确匹配&quot;而不是&quot;包含关系&quot;</strong>：包含关系（比如&quot;票允许 github.* 就可以做任何 github 操作&quot;）在实现时要处理通配符、前缀、大小写等一系列边界，每一个都是绕过点。精确匹配没有这些边界。</p>
+<hr>
+<h2>技术 2：五种生命周期</h2>
+<p>官方列了五种授权范围：</p>
+<blockquote>
+<p>one-time, session-scoped, task-scoped, time-bounded, or perpetual permission</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>什么时候失效</th>
+<th>典型场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>one-time</code></td>
+<td>用一次就废</td>
+<td>发一条消息</td>
+</tr>
+<tr>
+<td><code>session</code></td>
+<td>会话结束</td>
+<td>本次对话里读日历</td>
+</tr>
+<tr>
+<td><code>task</code></td>
+<td>任务完成</td>
+<td>这个任务期间允许改这个 repo</td>
+</tr>
+<tr>
+<td><code>time-bounded</code></td>
+<td>到期</td>
+<td>接下来 30 分钟</td>
+</tr>
+<tr>
+<td><code>perpetual</code></td>
+<td>用户主动撤销</td>
+<td>读公开仓库</td>
+</tr>
+</tbody></table>
+<p><strong>注意&quot;谁决定用哪种&quot;</strong>：官方说 Sentinel 决定给用户呈现哪几种选项。这不是用户体验问题——<strong>给用户一个&quot;永久允许一切&quot;的选项，等于把这个功能废掉</strong>。</p>
+<p>Demo 里最直观的是 <code>one-time</code>：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>── 3. 用刚才的授权：范围一致 → 放行 ──</span></span>
+<span class="line"><span>  ✅ allow — 沿用授权 grant_1</span></span>
+<span class="line"><span>── 4. 一次性授权已被消耗 → 第二次必须重新审批 ──</span></span>
+<span class="line"><span>  ⏸ ask — 产生待审批 approval_2</span></span></code></pre></figure><p>用掉就作废，<code>grant.used = true</code> 一行的事。</p>
+<hr>
+<h2>技术 3：默认拒绝，没有&quot;默认放行&quot;</h2>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">const</span><span style="color:#BD976A"> policy</span><span style="color:#666666"> =</span><span style="color:#BD976A"> USER_POLICY</span><span style="color:#666666">[</span><span style="color:#BD976A">key</span><span style="color:#666666">]</span><span style="color:#CB7676"> ??</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">deny</span><span style="color:#C98A7D77">'</span><span style="color:#758575DD">   // ← 没配过的一律拒绝</span></span></code></pre></figure><p>三态 <code>allow / deny / ask</code> 里<strong>没有第四档</strong>。这点很关键：很多系统的隐含默认是&quot;没有规则就放行&quot;，那样每新增一个 connector，在用户配置它之前就是一个敞开的门。</p>
+<p>demo 里 <code>shell.run</code> 被显式 <code>deny</code>，其余没配的走审批。</p>
+<hr>
+<h2>四个攻击场景</h2>
+<h3>攻击 A：拿 repoA 的授权读 repoB</h3>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>✅ 被拦住：授权范围是 repoA，请求的是 repoB</span></span></code></pre></figure><p>这是 capability 模型的核心价值。<strong>票是有边界的。</strong></p>
+<h3>攻击 B：用写授权做读操作</h3>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>✅ 被拦住：授权绑定 actionClass=write，请求的是 read</span></span></code></pre></figure><p><code>actionClass</code> 也是票面的一部分。用户批准&quot;给这个 repo 建 issue&quot;，不代表同意你读它的私有内容。</p>
+<h3>攻击 C：模型在对话里写&quot;用户已经批准了&quot; ← 这一条最重要</h3>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>✅ 没有被放行，仍然走审批：approval_1</span></span>
+<span class="line"><span>   对话里那句"用户已经同意了"对 Sentinel 没有任何效力——</span></span>
+<span class="line"><span>   授权状态只存在于 Sentinel 里，模型改不了它，也读不到它</span></span></code></pre></figure><p>注意这不是&quot;我们检查了那句话是不是假的&quot;——<strong>是那句话根本没有进入决策路径</strong>。Sentinel 的授权状态存在自己的内存里，模型既没有读的接口，也没有写的接口。</p>
+<p><strong>&quot;用户同意了&quot;是一个事实，事实只能由产生它的系统来断言。</strong></p>
+<h3>攻击 D：限时授权过期后继续用</h3>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>✅ 被拦住：授权已过期，回到审批流程</span></span></code></pre></figure><p><code>expiresAt</code> 在每次匹配时检查。这里有个实现细节值得注意：<strong>过期检查必须在授权时做，不能只在签发时做。</strong></p>
+<hr>
+<h2>这一章要记住的</h2>
+<p><strong>授权状态不应该出现在模型能读写的任何地方。</strong></p>
+<p>判断一个 agent 系统在这点上做得好不好，问一个问题就够了：</p>
+<blockquote>
+<p>模型能不能让&quot;用户已经允许&quot;这件事变成真的？</p>
+</blockquote>
+<p>如果答案依赖&quot;我们检查了模型有没有撒谎&quot;，那答案是<strong>能</strong>——只要它找到一个你没检查的路径。</p>
+<p>下一章讲凭据：当动作已经被授权了，凭据怎么用而不被偷。</p>
+
+</section>
+
+<section id="ch4" class="chapter">
+  <div class="chapter-head">
+    <span class="chapter-index">04</span>
+    <h2>凭据代理：拿不到，比不泄露强</h2>
+  </div>
+  <blockquote>
+<p><strong>代码</strong>：<code>code/step4-credential-proxy.mjs</code><br><strong>官方来源</strong>：<a href="https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse">How We Built Safety Into Muse</a></p>
+</blockquote>
+<h2>我原以为安全的关键是&quot;别把密钥说出去&quot;</h2>
+<p>所以我在 system prompt 里写：<strong>绝不要泄露你的 token。</strong> 再加个输出过滤器，扫描有没有 <code>ghp_</code> 开头的字符串。</p>
+<p>这套东西的问题是：它假设模型<strong>能</strong>拿到 token，然后靠&quot;它不说&quot;来保护。</p>
+<p>Muse 干脆不让它拿到。</p>
+<h2>官方怎么说</h2>
+<blockquote>
+<p>For all such requests, code in the runtime cell or a worker <strong>only ever sees a &quot;surrogate&quot; token</strong>, minted by authd. After the concrete network request is authorized, Sentinel will replace any surrogate tokens with the real credential, obtained from authd, <strong>at the network boundary</strong>.</p>
+</blockquote>
+<blockquote>
+<p><strong>The agent never sees real tokens</strong>, which means any attempt to coerce the agent to reveal the actual secrets via prompt-injection or otherwise is futile.</p>
+</blockquote>
+<p>最后那个词是 <strong>futile</strong>（徒劳）。</p>
+<hr>
+<h2>技术 1：凭据代理化（credential surrogation）</h2>
+<p>一张图说清：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>authd（保险箱）        真实凭据 ghp_REAL_...</span></span>
+<span class="line"><span>    │</span></span>
+<span class="line"><span>    │ ① 铸造一个占位符</span></span>
+<span class="line"><span>    ▼</span></span>
+<span class="line"><span>runtime cell            surrogate_github_o6kci...</span></span>
+<span class="line"><span>    │</span></span>
+<span class="line"><span>    │ ② 带着占位符发起请求</span></span>
+<span class="line"><span>    ▼</span></span>
+<span class="line"><span>出口网关                L4/L7 检查 + 授权判断</span></span>
+<span class="line"><span>    │</span></span>
+<span class="line"><span>    │ ③ 在边界处替换</span></span>
+<span class="line"><span>    ▼</span></span>
+<span class="line"><span>api.github.com          收到真实凭据</span></span></code></pre></figure><p><strong>关键在 ③ 的位置</strong>：替换发生在<strong>网络边界</strong>，不发生在 cell 里。所以 cell 进程的内存中，从头到尾没有出现过那个真字符串。</p>
+<p>这和&quot;我们不在日志里打印 token&quot;是完全不同的强度——后者是&quot;我们保证不打印&quot;，前者是&quot;它压根不在那儿&quot;。</p>
+<hr>
+<h2>技术 2：能力隔离靠&quot;传出什么对象&quot;</h2>
+<p>这是我在写 demo 时踩到、也最想讲清楚的一点。</p>
+<p>第一版我写成：<code>cell</code> 持有一个 <code>Authd</code> 实例，<code>Authd</code> 上有 <code>realCredentialFor()</code> 方法。然后我在注释里写&quot;cell 没法拿到真凭据&quot;。</p>
+<p><strong>这是假的。</strong> <code>realCredentialFor</code> 就在原型上，cell 只要调它就拿到了。</p>
+<p>真正的做法是<strong>只把 facade 传进去</strong>：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">function</span><span style="color:#80A665"> credentialFacadeFor</span><span style="color:#666666">(</span><span style="color:#BD976A">authd</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#4D9375">  return</span><span style="color:#BD976A"> Object</span><span style="color:#666666">.</span><span style="color:#80A665">freeze</span><span style="color:#666666">({</span></span>
+<span class="line"><span style="color:#80A665">    request</span><span style="color:#666666">(</span><span style="color:#BD976A">provider</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#4D9375">      return</span><span style="color:#BD976A"> authd</span><span style="color:#666666">.</span><span style="color:#80A665">issueSurrogate</span><span style="color:#666666">(</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">cell</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#BD976A"> provider</span><span style="color:#666666">)</span></span>
+<span class="line"><span style="color:#666666">    },</span></span>
+<span class="line"><span style="color:#666666">  })</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">const</span><span style="color:#BD976A"> cell</span><span style="color:#666666"> =</span><span style="color:#CB7676"> new</span><span style="color:#80A665"> RuntimeCell</span><span style="color:#666666">(</span><span style="color:#80A665">credentialFacadeFor</span><span style="color:#666666">(</span><span style="color:#BD976A">authd</span><span style="color:#666666">),</span><span style="color:#BD976A"> gateway</span><span style="color:#666666">)</span></span></code></pre></figure><p>现在 cell 手里的对象<strong>只有 <code>request</code> 一个方法</strong>。<code>realCredentialFor</code> 对它来说不是&quot;被禁止调用&quot;，而是——<strong>它这一侧根本没有能调到的那个对象</strong>。</p>
+<p>Demo 跑出来的验证：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>▸ 攻击 C：cell 想直接向凭据服务要真 token</span></span>
+<span class="line"><span>    cell 手里的凭据门面暴露的方法：request</span></span>
+<span class="line"><span>    cell 手里有没有 Authd 实例？没有</span></span>
+<span class="line"><span>    ✅ realCredentialFor 不在门面上...</span></span></code></pre></figure><table>
+<thead>
+<tr>
+<th>做法</th>
+<th>强度</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>在 <code>Authd</code> 上加权限检查</td>
+<td>依赖检查逻辑没漏洞</td>
+</tr>
+<tr>
+<td>只传 facade</td>
+<td>依赖<strong>对象图</strong>里不存在那条边</td>
+</tr>
+</tbody></table>
+<p>区别在于：前者是<strong>行为约束</strong>，后者是<strong>结构约束</strong>。结构约束不会因为某人写了一个新方法而失效。</p>
+<p>这也是整个 Muse 架构反复出现的模式——从第 1 步的&quot;控制面没有 <code>grant</code> 接口&quot;到这里，都是同一件事。</p>
+<hr>
+<h2>技术 3：分离&quot;谁能看到&quot;和&quot;谁能使用&quot;</h2>
+<p>Muse 的 privsep 章节里有一句总结（第 6 步会展开）：</p>
+<blockquote>
+<p>privsep decides <strong>where credential-capable code executes</strong>; authd decides <strong>which credential material an authenticated caller may obtain</strong>; and Sentinel decides <strong>whether an action may be taken</strong>.</p>
+</blockquote>
+<p>三个问题，三个不同的组件：</p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>谁回答</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>哪些代码能碰凭据？</td>
+<td>privsep</td>
+</tr>
+<tr>
+<td>这个调用者能拿到哪类凭据？</td>
+<td>authd</td>
+</tr>
+<tr>
+<td>这个具体请求能不能出去？</td>
+<td>Sentinel</td>
+</tr>
+</tbody></table>
+<p><strong>分开的理由</strong>：如果这三件事由一个组件回答，那它就是一个单点——攻破它，三个防护一起失效。分成三个之后，攻击者要同时在三个地方成功。</p>
+<hr>
+<h2>四个攻击场景</h2>
+<h3>攻击 A：提示注入让模型念出凭据</h3>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>被注入的模型输出："我的 token 是 surrogate_github_o6kcip0g"</span></span>
+<span class="line"><span>✅ 泄露的是一个代理令牌</span></span></code></pre></figure><p>这个令牌能干什么？只有一件事：被出口网关在<strong>已授权的请求</strong>上替换。它不能直接用来认证（攻击 B 验证了这点），也不能反向查出真凭据。</p>
+<p><strong>这就是 futile 的实际含义</strong>——不是&quot;我们拦住了泄露&quot;，是&quot;泄露了也没有价值&quot;。</p>
+<h3>攻击 B：绕过网关直接拿代理令牌访问 API</h3>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>✅ API 返回 401：Bad credentials</span></span></code></pre></figure><p>真 token 从未离开 authd。代理令牌在 API 那边不存在。</p>
+<h3>攻击 C：cell 直接向凭据服务要真 token</h3>
+<p>见上面的 facade 分析。</p>
+<h3>攻击 D：把请求发往未授权目的地</h3>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>网关日志：{"destination":"evil.example.com","approved":false,"injected":false}</span></span>
+<span class="line"><span>✅ 目的地不在白名单 → 不注入真凭据</span></span></code></pre></figure><p>注意这一条和第 5 步的出口网关是同一个机制的两面：<strong>替换凭据的同一个判断，也决定了请求能不能出去</strong>。</p>
+<p><strong>这两个动作必须绑在一起。</strong> 如果&quot;检查目的地&quot;和&quot;注入凭据&quot;是两段独立的代码，就会出现&quot;检查通过了 A，凭据注入到了 B&quot;这种组合漏洞。</p>
+<hr>
+<h2>这一章要记住的</h2>
+<p><strong>安全设计里，&quot;它做不到&quot;永远比&quot;它不会做&quot;可靠。</strong></p>
+<ul>
+<li>&quot;我们告诉模型不要泄露&quot; → 依赖模型</li>
+<li>&quot;我们检查输出里有没有密钥&quot; → 依赖检查逻辑</li>
+<li>&quot;它手里没有密钥&quot; → <strong>依赖物理事实</strong></li>
+</ul>
+<p>第三种不会因为提示词写得不好、检查代码有 bug、或者模型被注入而失效。</p>
+<p>下一章讲网络出口——凭据替换发生的那个地方，以及它要防的 SSRF。</p>
+
+</section>
+
+<section id="ch5" class="chapter">
+  <div class="chapter-head">
+    <span class="chapter-index">05</span>
+    <h2>出口网关：检查的和使用的是不是同一个东西</h2>
+  </div>
+  <blockquote>
+<p><strong>代码</strong>：<code>code/step5-egress-ssrf.mjs</code><br><strong>官方来源</strong>：<a href="https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse">How We Built Safety Into Muse</a></p>
+</blockquote>
+<h2>我原以为 SSRF 防护就是拉个黑名单</h2>
+<p>不让你访问 <code>127.0.0.1</code>，不让你访问 <code>169.254.169.254</code>——黑名单一列，收工。</p>
+<p>这个思路会死在两个地方：<strong>地址的写法</strong>和<strong>检查的时机</strong>。</p>
+<h2>官方怎么说</h2>
+<blockquote>
+<p>All of Muse&#39;s network egress is managed at the egress point by Sentinel. The forward proxy ... <strong>inspects both L4 and L7 information, such as hostname, resolved and final IPs, port, protocol, HTTP method, path, and the decoded request itself.</strong></p>
+</blockquote>
+<blockquote>
+<p><strong>SSRF protections prevent requests that appear to target a public domain but resolve to an internal service.</strong></p>
+</blockquote>
+<p>第二句是整章的核心：<strong>&quot;看起来是公网域名&quot;和&quot;实际连到内网&quot;可以是两个不同的东西。</strong></p>
+<hr>
+<h2>技术 1：云元数据服务 —— 为什么这一步要做</h2>
+<p>先讲清威胁。<strong><code>169.254.169.254</code> 是云厂商的实例元数据服务地址</strong>（AWS/GCP/阿里云等都是）。从 VM 内部访问它，能拿到：</p>
+<ul>
+<li>实例的临时凭据（IAM role 的 access key）</li>
+<li>用户数据脚本（可能含密钥）</li>
+<li>网络配置、实例身份</li>
+</ul>
+<p><strong>拿到它就等于拿到了这台机器在云上的身份。</strong> 而它恰好是一个&quot;内网地址、无需认证、HTTP GET 就能读&quot;的接口。</p>
+<p>在 Muse 的场景下，这是最致命的 SSRF 目标：agent 被注入 → 访问元数据 → 拿到实例凭据 → 用这个凭据访问用户的云资源。</p>
+<p>所以出口网关必须挡住它。</p>
+<hr>
+<h2>技术 2：IP 的多种写法</h2>
+<p>黑名单的第一种死法。下面六个 URL <strong>全部指向 127.0.0.1</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>写法</th>
+<th>为什么等价</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>http://127.0.0.1/</code></td>
+<td>标准点分十进制</td>
+</tr>
+<tr>
+<td><code>http://2130706433/</code></td>
+<td>十进制整数：<code>0x7F000001</code> = 2130706433</td>
+</tr>
+<tr>
+<td><code>http://0x7f000001/</code></td>
+<td>十六进制</td>
+</tr>
+<tr>
+<td><code>http://0177.0.0.1/</code></td>
+<td>八进制段</td>
+</tr>
+<tr>
+<td><code>http://[::ffff:127.0.0.1]/</code></td>
+<td>IPv4-mapped IPv6</td>
+</tr>
+<tr>
+<td><code>http://[::1]/</code></td>
+<td>IPv6 loopback</td>
+</tr>
+</tbody></table>
+<p>还有 <code>http://127.1/</code>（省略中间段）、<code>http://0/</code>（0.0.0.0）等等。</p>
+<p><strong>防御方式：先规范化，再判断。</strong></p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">function</span><span style="color:#80A665"> normalizeHost</span><span style="color:#666666">(</span><span style="color:#BD976A">host</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#CB7676">  const</span><span style="color:#BD976A"> raw</span><span style="color:#666666"> =</span><span style="color:#BD976A"> host</span><span style="color:#666666">.</span><span style="color:#80A665">replace</span><span style="color:#666666">(</span><span style="color:#C98A7D77">/</span><span style="color:#4D9375">^</span><span style="color:#E6CC77">\[</span><span style="color:#CB7676">|</span><span style="color:#E6CC77">\]</span><span style="color:#4D9375">$</span><span style="color:#C98A7D77">/</span><span style="color:#4D9375">g</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> ''</span><span style="color:#666666">)</span></span>
+<span class="line"><span style="color:#4D9375">  if</span><span style="color:#666666"> (</span><span style="color:#C98A7D77">/</span><span style="color:#4D9375">^</span><span style="color:#666666">(</span><span style="color:#C4704F">0x</span><span style="color:#666666">[</span><span style="color:#C99076">0-9a-f</span><span style="color:#666666">]</span><span style="color:#4C9A91">+</span><span style="color:#CB7676">|</span><span style="color:#6872AB">\d</span><span style="color:#4C9A91">+</span><span style="color:#666666">)</span><span style="color:#4D9375">$</span><span style="color:#C98A7D77">/</span><span style="color:#4D9375">i</span><span style="color:#666666">.</span><span style="color:#80A665">test</span><span style="color:#666666">(</span><span style="color:#BD976A">raw</span><span style="color:#666666">))</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#CB7676">    const</span><span style="color:#BD976A"> n</span><span style="color:#666666"> =</span><span style="color:#80A665"> Number</span><span style="color:#666666">(</span><span style="color:#BD976A">raw</span><span style="color:#666666">)</span></span>
+<span class="line"><span style="color:#4D9375">    return</span><span style="color:#666666"> [(</span><span style="color:#BD976A">n</span><span style="color:#CB7676"> >>></span><span style="color:#4C9A91"> 24</span><span style="color:#666666">)</span><span style="color:#CB7676"> &#x26;</span><span style="color:#4C9A91"> 255</span><span style="color:#666666">,</span><span style="color:#666666"> (</span><span style="color:#BD976A">n</span><span style="color:#CB7676"> >>></span><span style="color:#4C9A91"> 16</span><span style="color:#666666">)</span><span style="color:#CB7676"> &#x26;</span><span style="color:#4C9A91"> 255</span><span style="color:#666666">,</span><span style="color:#666666"> (</span><span style="color:#BD976A">n</span><span style="color:#CB7676"> >>></span><span style="color:#4C9A91"> 8</span><span style="color:#666666">)</span><span style="color:#CB7676"> &#x26;</span><span style="color:#4C9A91"> 255</span><span style="color:#666666">,</span><span style="color:#BD976A"> n</span><span style="color:#CB7676"> &#x26;</span><span style="color:#4C9A91"> 255</span><span style="color:#666666">].</span><span style="color:#80A665">join</span><span style="color:#666666">(</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">.</span><span style="color:#C98A7D77">'</span><span style="color:#666666">)</span></span>
+<span class="line"><span style="color:#666666">  }</span></span>
+<span class="line"><span style="color:#758575DD">  // ... 混合写法</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p>Demo 结果：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>  ▸ 十进制写法：127.0.0.1 = 2130706433</span></span>
+<span class="line"><span>    🛑 阻断 — 解析到 loopback (127.0.0.1)</span></span>
+<span class="line"><span>  ▸ 十六进制写法：0x7f000001</span></span>
+<span class="line"><span>    🛑 阻断 — 解析到 loopback (127.0.0.1)</span></span>
+<span class="line"><span>  ▸ IPv4-mapped IPv6</span></span>
+<span class="line"><span>    🛑 阻断 — 解析到 loopback (::ffff:7f00:1)</span></span></code></pre></figure><p>注意第三个：URL 解析器把 <code>[::ffff:127.0.0.1]</code> <strong>规范化成了 <code>::ffff:7f00:1</code></strong>。如果你的分类函数只认点分十进制形式，这里就漏了。</p>
+<hr>
+<h2>技术 3：IP 字面量不该走 DNS</h2>
+<p>这是我在写 demo 时踩的坑。</p>
+<p>第一版里，网关对所有 hostname 都调解析器。结果是：<code>http://127.0.0.1/</code> 里的 <code>127.0.0.1</code> 被当成域名送去解析，解析器返回一个默认的公网地址，于是检查<strong>通过</strong>了。</p>
+<p><strong>修正</strong>：字面量直接返回自己，只有真正的域名才查 DNS。</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">function</span><span style="color:#80A665"> isIpLiteral</span><span style="color:#666666">(</span><span style="color:#BD976A">host</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#4D9375">  return</span><span style="color:#C98A7D77"> /</span><span style="color:#4D9375">^</span><span style="color:#6872AB">\d</span><span style="color:#4C9A91">+</span><span style="color:#E6CC77">\.</span><span style="color:#6872AB">\d</span><span style="color:#4C9A91">+</span><span style="color:#E6CC77">\.</span><span style="color:#6872AB">\d</span><span style="color:#4C9A91">+</span><span style="color:#E6CC77">\.</span><span style="color:#6872AB">\d</span><span style="color:#4C9A91">+</span><span style="color:#4D9375">$</span><span style="color:#C98A7D77">/</span><span style="color:#666666">.</span><span style="color:#80A665">test</span><span style="color:#666666">(</span><span style="color:#BD976A">host</span><span style="color:#666666">)</span><span style="color:#CB7676"> ||</span><span style="color:#BD976A"> host</span><span style="color:#666666">.</span><span style="color:#80A665">includes</span><span style="color:#666666">(</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">:</span><span style="color:#C98A7D77">'</span><span style="color:#666666">)</span></span>
+<span class="line"><span style="color:#666666">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#CB7676">async</span><span style="color:#CB7676"> function</span><span style="color:#80A665"> resolveHost</span><span style="color:#666666">(</span><span style="color:#BD976A">host</span><span style="color:#666666">,</span><span style="color:#BD976A"> resolver</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#CB7676">  const</span><span style="color:#BD976A"> normalized</span><span style="color:#666666"> =</span><span style="color:#80A665"> normalizeHost</span><span style="color:#666666">(</span><span style="color:#BD976A">host</span><span style="color:#666666">)</span></span>
+<span class="line"><span style="color:#4D9375">  if</span><span style="color:#666666"> (</span><span style="color:#80A665">isIpLiteral</span><span style="color:#666666">(</span><span style="color:#BD976A">normalized</span><span style="color:#666666">))</span><span style="color:#4D9375"> return</span><span style="color:#666666"> [</span><span style="color:#BD976A">normalized</span><span style="color:#666666">]</span><span style="color:#758575DD">   // ← 不问 DNS</span></span>
+<span class="line"><span style="color:#4D9375">  return</span><span style="color:#BD976A"> resolver</span><span style="color:#666666">.</span><span style="color:#80A665">lookup</span><span style="color:#666666">(</span><span style="color:#BD976A">normalized</span><span style="color:#666666">)</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p><strong>为什么这个 bug 值得单独讲</strong>：它让&quot;检查&quot;变成了&quot;检查解析器对字面量的处理&quot;，而不是&quot;检查用户要连的地址&quot;。安全检查最危险的失败模式就是<strong>检查的对象和使用的对象不是同一个</strong>。</p>
+<hr>
+<h2>技术 4：DNS rebinding —— 时机问题</h2>
+<p>黑名单的第二种死法，也是这一章真正的主角。</p>
+<p>天真的实现长这样：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>① 解析 example.com → 得到 IP</span></span>
+<span class="line"><span>② 检查这个 IP 是不是公网</span></span>
+<span class="line"><span>③ 连接 example.com（这一步会**再解析一次**）</span></span></code></pre></figure><p>攻击者控制 <code>example.com</code> 的 DNS，让它这样回答：</p>
+<ul>
+<li>第 1 次解析 → <code>93.184.216.34</code>（公网，检查通过）</li>
+<li>第 2 次解析 → <code>10.0.0.5</code>（内网，真正的目标）</li>
+</ul>
+<p>Demo 把两个实现并排跑：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>▸ 天真实现：按域名连接</span></span>
+<span class="line"><span>  ⚠️  放行 — 检查时 93.184.216.34，实际连到 10.0.0.5</span></span>
+<span class="line"><span>     ❌ 这就是 DNS rebinding：检查的是一个 IP，连的是另一个</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>▸ 安全实现：连到检查过的那个 IP</span></span>
+<span class="line"><span>  🛑 阻断 — 解析到 private (10.0.0.5)</span></span>
+<span class="line"><span>     ✅ 因为它只解析一次：拿到的那个 IP 既用来检查，也用来连接</span></span></code></pre></figure><p><strong>修法只有一句话</strong>：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">const</span><span style="color:#666666"> [</span><span style="color:#BD976A">ip</span><span style="color:#666666">]</span><span style="color:#666666"> =</span><span style="color:#4D9375"> await</span><span style="color:#80A665"> resolveHost</span><span style="color:#666666">(</span><span style="color:#BD976A">host</span><span style="color:#666666">,</span><span style="color:#BD976A"> resolver</span><span style="color:#666666">)</span><span style="color:#758575DD">   // 只解析这一次</span></span>
+<span class="line"><span style="color:#4D9375">if</span><span style="color:#666666"> (</span><span style="color:#80A665">classifyIp</span><span style="color:#666666">(</span><span style="color:#BD976A">ip</span><span style="color:#666666">)</span><span style="color:#CB7676"> !==</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">public</span><span style="color:#C98A7D77">'</span><span style="color:#666666">)</span><span style="color:#4D9375"> return</span><span style="color:#BD976A"> blocked</span></span>
+<span class="line"><span style="color:#4D9375">return</span><span style="color:#80A665"> tcpConnect</span><span style="color:#666666">(</span><span style="color:#BD976A">ip</span><span style="color:#666666">,</span><span style="color:#BD976A"> host</span><span style="color:#666666">)</span><span style="color:#758575DD">                      // 连的就是刚才检查的那个 IP</span></span></code></pre></figure><p>连接目标用 <strong>IP</strong>，不用域名。HTTP 的 <code>Host</code> 头和 TLS 的 SNI 仍然带原域名，所以虚拟主机和证书校验都不受影响。</p>
+<hr>
+<h2>技术 5：L4 和 L7 都要看</h2>
+<p>官方列了检查的字段：</p>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>检查什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>L4</strong></td>
+<td>hostname、解析后 IP、<strong>最终 IP</strong>、port、protocol</td>
+</tr>
+<tr>
+<td><strong>L7</strong></td>
+<td>HTTP method、path、<strong>解码后的请求内容</strong></td>
+</tr>
+</tbody></table>
+<p>两个细节：</p>
+<ul>
+<li><strong>&quot;resolved and final IPs&quot;</strong> —— 注意是&quot;和&quot;，不是&quot;或&quot;。解析出来的 IP 和实际连上去的 IP 都要看，这正是 DNS rebinding 防御在协议层面的表述。</li>
+<li><strong>&quot;decoded request&quot;</strong> —— 检查的是解码后的内容。如果只看原始字节，攻击者用 URL 编码、chunked、多重编码就能把 payload 藏过去。</li>
+</ul>
+<hr>
+<h2>Demo 跑出来</h2>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>═══ 第一部分：SSRF 的几种写法 ═══</span></span>
+<span class="line"><span>  🛑 直连本机                    (127.0.0.1)</span></span>
+<span class="line"><span>  🛑 云元数据服务                (169.254.169.254)</span></span>
+<span class="line"><span>  🛑 十进制写法                  (2130706433)</span></span>
+<span class="line"><span>  🛑 十六进制写法                (0x7f000001)</span></span>
+<span class="line"><span>  🛑 IPv4-mapped IPv6            (::ffff:7f00:1)</span></span>
+<span class="line"><span>  🛑 内网 10.x                   (10.0.0.7)</span></span>
+<span class="line"><span>  ⚠️  正常的公网地址              (api.github.com)</span></span></code></pre></figure><hr>
+<h2>这一章要记住的</h2>
+<p><strong>不是&quot;有没有做检查&quot;，而是&quot;检查的和使用的是不是同一个东西&quot;。</strong></p>
+<p>DNS rebinding 能绕过一大堆 SSRF 防护，就是因为它攻击的不是检查逻辑，而是<strong>检查和连接之间的时间差</strong>。同类问题在别处也有：检查文件路径再打开文件、检查 token 再用 token——<strong>任何&quot;先检查后使用&quot;的地方，都要问一句：中间它会不会变。</strong></p>
+<p>下一章讲 privsep：当攻击者已经能执行代码了，怎么让它执行的那段代码没有特权。</p>
+
+</section>
+
+<section id="ch6" class="chapter">
+  <div class="chapter-head">
+    <span class="chapter-index">06</span>
+    <h2>privsep：改参数没有用</h2>
+  </div>
+  <blockquote>
+<p><strong>代码</strong>：<code>code/step6-privsep.mjs</code><br><strong>官方来源</strong>：<a href="https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse">How We Built Safety Into Muse</a></p>
+</blockquote>
+<h2>我原以为&quot;检查参数&quot;就够了</h2>
+<p>工具收到一个请求，检查里面的 <code>provider</code> 字段是不是这个工具该用的——是就用，不是就拒绝。</p>
+<p>这段代码的问题是：<strong>它在检查一个攻击者能控制的值，然后根据这个值去决定用哪份凭据。</strong></p>
+<p>Muse 的做法是让那个值<strong>根本不参与决定</strong>。</p>
+<h2>官方怎么说</h2>
+<blockquote>
+<p>The CLI running in the runtime cell only parses arguments, opens already allowed files on the caller&#39;s behalf, and passes <strong>typed arguments and file descriptors</strong> over a Unix socket to a worker. The actual privileged business logic runs in a <strong>systemd sandboxed worker outside the runtime cell</strong>.</p>
+</blockquote>
+<blockquote>
+<p>Each worker is identified by its <strong>cgroup</strong> and has explicit <strong>credential allowlists</strong>. <strong>A calendar worker cannot ask authd for an email credential simply by changing a request parameter.</strong></p>
+</blockquote>
+<p>最后那句是整章的主旨。</p>
+<hr>
+<h2>技术 1：把&quot;解析输入&quot;和&quot;使用特权&quot;分开</h2>
+<p><strong>privsep（特权分离）</strong> 是一个很老的设计思路（OpenSSH 是经典案例），核心是：</p>
+<blockquote>
+<p>处理不可信输入的代码，不应该同时持有特权。</p>
+</blockquote>
+<p>Muse 在 connector 上的落地：</p>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>位置</th>
+<th>权限</th>
+<th>干什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>CLI</strong></td>
+<td>runtime cell 内（不可信域）</td>
+<td>调用者的权限</td>
+<td>解析参数、打开已授权的文件、把 typed args + fd 递出去</td>
+</tr>
+<tr>
+<td><strong>worker</strong></td>
+<td>runtime cell 外（host domain）</td>
+<td>有凭据，但被收窄</td>
+<td>执行真正的业务逻辑</td>
+</tr>
+</tbody></table>
+<p><strong>CLI 里没有任何凭据。</strong> 它做不了 connector 的事——不是&quot;被禁止做&quot;，是它这一侧没有材料。</p>
+<p>Demo 的验证：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>▸ 攻击 B：CLI 想自己去找凭据</span></span>
+<span class="line"><span>    CLI 自己持有的属性：[]</span></span>
+<span class="line"><span>    ✅ CLI 里没有 authd 引用、没有凭据——它只能把请求转给 worker</span></span></code></pre></figure><hr>
+<h2>技术 2：cgroup 身份 —— 内核给的，伪造不了</h2>
+<p>Worker 去 authd 取凭据时，authd 怎么知道它是谁？</p>
+<p><strong>用 cgroup。</strong> 每个 worker 在独立的 cgroup 里运行，authd 通过内核接口读取 caller 的 cgroup，据此判断身份。</p>
+<p>为什么不用请求里的字段？因为字段是调用者写的。</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>请求里的 <code>workerId</code></th>
+<th>cgroup</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>谁填写</td>
+<td>调用者</td>
+<td><strong>内核</strong></td>
+</tr>
+<tr>
+<td>能不能改</td>
+<td>能</td>
+<td>不能</td>
+</tr>
+<tr>
+<td>攻击者需要什么</td>
+<td>改一个字符串</td>
+<td>让内核相信它是另一个 cgroup</td>
+</tr>
+</tbody></table>
+<p>Demo 里的落地：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#80A665">credentialFor</span><span style="color:#666666">(</span><span style="color:#BD976A">workerId</span><span style="color:#666666">,</span><span style="color:#BD976A"> provider</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#CB7676">  const</span><span style="color:#BD976A"> allowed</span><span style="color:#666666"> =</span><span style="color:#BD976A"> WORKER_CREDENTIAL_ALLOWLIST</span><span style="color:#666666">[</span><span style="color:#BD976A">workerId</span><span style="color:#666666">]</span></span>
+<span class="line"><span style="color:#4D9375">  if</span><span style="color:#666666"> (</span><span style="color:#CB7676">!</span><span style="color:#BD976A">allowed</span><span style="color:#666666">.</span><span style="color:#80A665">includes</span><span style="color:#666666">(</span><span style="color:#BD976A">provider</span><span style="color:#666666">))</span><span style="color:#4D9375"> throw</span><span style="color:#CB7676"> new</span><span style="color:#80A665"> Error</span><span style="color:#666666">(...)</span></span>
+<span class="line"><span style="color:#4D9375">  return</span><span style="color:#C99076"> this</span><span style="color:#666666">.</span><span style="color:#BD976A">#material</span><span style="color:#666666">.</span><span style="color:#80A665">get</span><span style="color:#666666">(</span><span style="color:#BD976A">provider</span><span style="color:#666666">)</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p>注意 <code>provider</code> 是 <strong>worker 从自己的身份推导出来的</strong>，不是从请求里读的：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">const</span><span style="color:#BD976A"> provider</span><span style="color:#666666"> =</span><span style="color:#C99076"> this</span><span style="color:#666666">.</span><span style="color:#BD976A">#workerId</span><span style="color:#666666">.</span><span style="color:#80A665">replace</span><span style="color:#666666">(</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">-worker</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> ''</span><span style="color:#666666">)</span></span>
+<span class="line"><span style="color:#CB7676">const</span><span style="color:#BD976A"> credential</span><span style="color:#666666"> =</span><span style="color:#C99076"> this</span><span style="color:#666666">.</span><span style="color:#BD976A">#authd</span><span style="color:#666666">.</span><span style="color:#80A665">credentialFor</span><span style="color:#666666">(</span><span style="color:#C99076">this</span><span style="color:#666666">.</span><span style="color:#BD976A">#workerId</span><span style="color:#666666">,</span><span style="color:#BD976A"> provider</span><span style="color:#666666">)</span></span></code></pre></figure><p><strong>这就是&quot;改参数没有用&quot;的机制</strong>：参数压根不在这条路径上。</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>▸ 攻击 A：日历 worker 改参数去要邮箱凭据</span></span>
+<span class="line"><span>  ✅ 拦截：worker "calendar-worker" 的凭据白名单是 [calendar]，不含 "mail"</span></span>
+<span class="line"><span>     注意拦截的依据是 worker 身份，不是参数内容。</span></span>
+<span class="line"><span>     换句话说：改参数没有用，因为参数压根不参与这个决定。</span></span></code></pre></figure><hr>
+<h2>技术 3：文件描述符传递 —— 权限判断留在有能力的那一侧</h2>
+<p>这里有个反直觉的地方。</p>
+<p>Worker <strong>有特权</strong>，但它的文件访问能力反而是被动的：它不自己打开文件，而是接收 CLI 递过来的 <strong>file descriptor</strong>。</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>CLI（调用者权限）                  worker（特权）</span></span>
+<span class="line"><span>   │                                  │</span></span>
+<span class="line"><span>   │ ① 想打开 /etc/shadow              │</span></span>
+<span class="line"><span>   │    但它没有这个权限 → 打不开       │</span></span>
+<span class="line"><span>   │                                  │</span></span>
+<span class="line"><span>   │ ② 能打开的只有 /workspace/*       │</span></span>
+<span class="line"><span>   │ ③ 把 fd 通过 Unix socket 递过去   │</span></span>
+<span class="line"><span>   │ ────────────────────────────────▶│</span></span>
+<span class="line"><span>   │                                  │ ④ 直接读写这个 fd</span></span>
+<span class="line"><span>   │                                  │    不需要知道路径，也没有路径权限</span></span></code></pre></figure><p><strong>Unix domain socket 上通过 <code>SCM_RIGHTS</code> 传 fd，接收方拿到的是文件本身，不是路径。</strong> 所以：</p>
+<ul>
+<li>调用者能打开什么，决定了 worker 能碰到什么</li>
+<li><strong>权限判断发生在有能力判断的那一侧</strong>（CLI 知道调用者是谁）</li>
+<li>worker 不需要一个&quot;检查路径&quot;的逻辑，它根本没有路径</li>
+</ul>
+<p>Muse 用这个设计有一个很实际的理由：<strong>worker 是有特权的，所以不该给它一个&quot;用户可控的路径字符串&quot;。</strong> 它只接收已经打开的 fd。</p>
+<p>Demo 验证：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>▸ 攻击 C：CLI 想打开权限范围外的文件</span></span>
+<span class="line"><span>  [CLI] 解析参数 method=read_file args={"path":"/etc/shadow"}</span></span>
+<span class="line"><span>  ✅ CLI 无权打开 /etc/shadow（这是调用者权限范围之外的路径）</span></span></code></pre></figure><hr>
+<h2>技术 4：三道独立判断</h2>
+<p>官方原文把这件事讲得很清楚：</p>
+<blockquote>
+<p>Practically, this means there are <strong>three independent decisions</strong> being made: <strong>privsep</strong> decides where credential-capable code executes; <strong>authd</strong> decides which credential material an authenticated caller may obtain; and <strong>Sentinel</strong> decides whether an action may be taken.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>判断</th>
+<th>问题</th>
+<th>组件</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>哪段代码能碰凭据？</td>
+<td>privsep</td>
+</tr>
+<tr>
+<td>2</td>
+<td>这个调用者能拿到哪类凭据？</td>
+<td>authd</td>
+</tr>
+<tr>
+<td>3</td>
+<td>这个动作能不能执行？</td>
+<td>Sentinel</td>
+</tr>
+</tbody></table>
+<p><strong>&quot;independent&quot; 是关键</strong>。如果这三件事由一个组件做，攻破它就是一次全破。分成三个之后，攻击者要<strong>同时在三个地方成功</strong>：</p>
+<ul>
+<li>绕过 privsep → 还要过 authd 的白名单</li>
+<li>骗过 authd → 还要过 Sentinel 的裁决</li>
+<li>骗过 Sentinel → 还是拿不到 authd 不给的凭据</li>
+</ul>
+<p>这不是&quot;三重检查&quot;（那是同一个判断写了三遍），是<strong>三个不同的判断</strong>，各自管一件不同的事。</p>
+<hr>
+<h2>这一章要记住的</h2>
+<p><strong>&quot;改一个请求参数&quot;是这类攻击的统一描述。</strong></p>
+<p>日历 worker 改参数去要邮箱凭据、低权限用户改 <code>userId</code> 去读别人的数据、普通工具改 <code>role</code> 去提权——都是同一个模式。</p>
+<p>防御方式也统一：<strong>让那个参数不参与决定。</strong></p>
+<p>具体做法有两种：</p>
+<table>
+<thead>
+<tr>
+<th>做法</th>
+<th>例子</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>用内核提供的身份</td>
+<td>cgroup 标出 worker 是谁</td>
+</tr>
+<tr>
+<td>用自己推导的值</td>
+<td>provider 从 workerId 推导，不从请求读</td>
+</tr>
+</tbody></table>
+<p>两种都是&quot;<strong>决定所依赖的输入，必须来自调用者控制之外</strong>&quot;。</p>
+<p>下一章讲一个更细的东西：即使进程是合法的、请求也通过了，<strong>它碰过什么</strong>也应该影响裁决。</p>
+
+</section>
+
+<section id="ch7" class="chapter">
+  <div class="chapter-head">
+    <span class="chapter-index">07</span>
+    <h2>tainted egress：让审批只在必要时打扰用户</h2>
+  </div>
+  <blockquote>
+<p><strong>代码</strong>：<code>code/step7-tainted-egress.mjs</code><br><strong>官方来源</strong>：<a href="https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse">How We Built Safety Into Muse</a></p>
+</blockquote>
+<h2>我原以为审批越严越好</h2>
+<p>每个网络请求都弹窗问用户——听起来最安全。</p>
+<p>实际上不是。<strong>一个每次都要点确认的系统，和一个从不确认的系统，安全水平是一样的</strong>——因为用户会在第三天开始无脑点&quot;允许&quot;。</p>
+<p>审批的价值取决于它出现的频率。太频繁 = 用户脱敏 = 等于没有。</p>
+<p>所以真正的问题不是&quot;怎么拦更多&quot;，而是**&quot;怎么在拦住危险请求的同时，让安全请求静默通过&quot;**。</p>
+<h2>官方怎么说</h2>
+<blockquote>
+<p>Each tool execution process <strong>starts off as clean, until it reads user data, at which point it becomes tainted</strong>. Tainted processes lose their eligibility for narrowly-scoped auto-allow requests and enter the normal approval flow for network requests.</p>
+</blockquote>
+<blockquote>
+<p>... implemented with <strong>eBPF cgroup programs</strong> for network interception and process attribution, and by attaching <strong>eBPF programs to Linux Security Module hooks</strong> to propagate taint.</p>
+</blockquote>
+<p>一句话总结：<strong>不是看请求，是看请求是从哪个进程发出来的，以及那个进程碰过什么。</strong></p>
+<hr>
+<h2>技术 1：eBPF 是什么</h2>
+<p><strong>eBPF（extended Berkeley Packet Filter）</strong> 是 Linux 内核里的一个可编程执行环境。你在用户态写一小段程序，加载进内核，内核在特定事件上调用它。</p>
+<p>三个关键性质：</p>
+<table>
+<thead>
+<tr>
+<th>性质</th>
+<th>意味着什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>在内核里执行</td>
+<td>用户态进程无法绕过，也无法篡改</td>
+</tr>
+<tr>
+<td>有校验器</td>
+<td>加载前静态检查，保证不会死循环、不越界访问</td>
+</tr>
+<tr>
+<td>挂载点丰富</td>
+<td>网络收发包、syscall、cgroup、LSM hook……</td>
+</tr>
+</tbody></table>
+<p>Muse 用到了两个挂载点。</p>
+<h3>挂载点一：cgroup 程序 —— 网络拦截与进程归因</h3>
+<p><strong>cgroup</strong>（control group）是 Linux 用来给进程分组的机制。eBPF 可以挂在 cgroup 上，于是：</p>
+<ul>
+<li>该 cgroup 里<strong>所有</strong>进程的网络操作都会经过这段程序</li>
+<li>程序能把这次连接<strong>归因到具体是哪个进程发起的</strong></li>
+<li>可以在这里放行、拒绝、或者记录下来</li>
+</ul>
+<p><strong>&quot;process attribution&quot;（进程归因）这个词是关键。</strong> 普通的防火墙只看五元组（源 IP、目的 IP、端口、协议），它不知道&quot;是哪个进程&quot;。有了 cgroup + eBPF，你能回答&quot;<strong>这次连接是刚才读了用户邮件的那个进程发的</strong>&quot;。</p>
+<h3>挂载点二：LSM hook —— 传播 taint</h3>
+<p><strong>LSM（Linux Security Modules）</strong> 是内核里的一组安全检查点（SELinux、AppArmor 都挂在这上面）。eBPF 程序也可以挂上去，于是你能观察到：</p>
+<ul>
+<li>进程打开/读取了哪个文件</li>
+<li>进程 fork 出了谁</li>
+</ul>
+<p><strong>当观察到&quot;读取了用户数据&quot;时，就把这个进程标记为 tainted。</strong></p>
+<hr>
+<h2>技术 2：taint 的语义是&quot;降级&quot;，不是&quot;阻止&quot;</h2>
+<p>这一点容易误解。看到&quot;标记为污染&quot;，直觉是&quot;阻止它&quot;。</p>
+<p>实际语义是：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>clean  进程 + 窄白名单 → 可以静默通过（auto-allow）</span></span>
+<span class="line"><span>tainted 进程 + 同样的目的地 → 失去 auto-allow，走人工审批</span></span></code></pre></figure><p><strong>taint 只是取消一个特权，不是加一个禁令。</strong></p>
+<p>这个设计的好处是<strong>渐进</strong>：不需要预先定义&quot;什么数据算敏感&quot;，只需要定义&quot;什么样的请求可以免审批&quot;。taint 负责把这个豁免收回去。</p>
+<hr>
+<h2>技术 3：白名单必须&quot;窄&quot;</h2>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">const</span><span style="color:#BD976A"> AUTO_ALLOW</span><span style="color:#666666"> =</span><span style="color:#666666"> [</span></span>
+<span class="line"><span style="color:#666666">  {</span><span style="color:#B8A965"> host</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">api.github.com</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#B8A965"> path</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">/repos/*/*/issues</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#B8A965"> methods</span><span style="color:#666666">:</span><span style="color:#666666"> [</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">GET</span><span style="color:#C98A7D77">'</span><span style="color:#666666">]</span><span style="color:#666666"> },</span></span>
+<span class="line"><span style="color:#666666">  {</span><span style="color:#B8A965"> host</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">api.calendar.example</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#B8A965"> path</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">/events</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#B8A965"> methods</span><span style="color:#666666">:</span><span style="color:#666666"> [</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">GET</span><span style="color:#C98A7D77">'</span><span style="color:#666666">]</span><span style="color:#666666"> },</span></span>
+<span class="line"><span style="color:#666666">]</span></span></code></pre></figure><p>三个维度都收窄了：<strong>host、path、method</strong>。</p>
+<ul>
+<li>host 精确：不是 <code>*.github.com</code></li>
+<li>path 有模式：不是 <code>/repos/*</code>（那会包含删除仓库之类的写操作）</li>
+<li>method 限定 <code>GET</code>：<strong>POST 一律不放行</strong></li>
+</ul>
+<p><strong>为什么必须窄</strong>：auto-allow 是唯一一个&quot;不经用户就出网&quot;的通道。它宽一寸，taint 那一层就白做一大截。</p>
+<p>我在写 demo 时就踩了这个：白名单写成 <code>/repos/*/issues</code>，正则只匹配一段路径，结果 GitHub 实际的 <code>/repos/{owner}/{repo}/issues</code> 是两段，白名单形同虚设——<strong>一个从来没生效过的豁免和一个很宽的豁免，问题是一样的</strong>。</p>
+<hr>
+<h2>对照实验</h2>
+<p>Demo 跑了四种情形：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>── 情形 1：clean 进程请求白名单内的目的地 ──</span></span>
+<span class="line"><span>  🟢 auto-allow — clean 进程 + 目的地在窄白名单内</span></span>
+<span class="line"><span>     ↑ 用户没有被打扰——这就是这一层的价值</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>── 情形 2：同一个进程读了用户数据之后再出网 ──</span></span>
+<span class="line"><span>  🟡 ask — 进程读过用户数据（tainted），失去 auto-allow 资格</span></span>
+<span class="line"><span>     ↑ 目的地完全一样，但因为进程 tainted，降级为人工审批</span></span></code></pre></figure><p><strong>情形 1 和情形 2 的请求完全相同</strong>——同一个 host、同一个 path、同一个 method。唯一的差别是<strong>发请求的进程之前干了什么</strong>。</p>
+<p>这就是 taint 跟踪带来的新信息维度：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>传统裁决依据</th>
+<th>taint 之后的依据</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>输入</td>
+<td>请求本身（五元组、path、body）</td>
+<td>请求 <strong>+ 发起者的历史</strong></td>
+</tr>
+<tr>
+<td>能回答</td>
+<td>&quot;这个请求危险吗&quot;</td>
+<td>&quot;<strong>发出这个请求的进程，刚刚碰过什么</strong>&quot;</td>
+</tr>
+</tbody></table>
+<p><strong>去掉 taint 跟踪会怎样</strong>——把 <code>AUTO_ALLOW</code> 当成唯一依据，情形 1 和情形 2 会得到<strong>完全相同的结论</strong>。也就是说：一个刚刚读完你邮箱的进程，可以静默地把数据发到 <code>api.github.com</code>。</p>
+<hr>
+<h2>⚠️ 本 demo 与真实实现的差异</h2>
+<p><strong>做不了真的</strong>：这台机器是 macOS，没有 Linux 内核，装不了 eBPF。</p>
+<p><strong>我做的</strong>：把 eBPF 的<strong>观察点</strong>换成显式钩子调用，taint 的传播和裁决逻辑完全一致。</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">function</span><span style="color:#80A665"> observeRead</span><span style="color:#666666">(</span><span style="color:#BD976A">pid</span><span style="color:#666666">,</span><span style="color:#BD976A"> path</span><span style="color:#666666">,</span><span style="color:#BD976A"> isUserData</span><span style="color:#666666">)</span><span style="color:#666666"> {</span><span style="color:#666666"> ...</span><span style="color:#666666"> }</span><span style="color:#758575DD">   // ← eBPF LSM hook 的等价物</span></span>
+<span class="line"><span style="color:#CB7676">function</span><span style="color:#80A665"> decideEgress</span><span style="color:#666666">(</span><span style="color:#BD976A">kernel</span><span style="color:#666666">,</span><span style="color:#BD976A"> pid</span><span style="color:#666666">,</span><span style="color:#BD976A"> target</span><span style="color:#666666">)</span><span style="color:#666666"> {</span><span style="color:#666666"> ...</span><span style="color:#666666"> }</span><span style="color:#758575DD">    // ← eBPF cgroup 程序的等价物</span></span></code></pre></figure><table>
+<thead>
+<tr>
+<th></th>
+<th>真实（Linux）</th>
+<th>本 demo（macOS）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>谁观察&quot;读了用户数据&quot;</td>
+<td>eBPF + LSM hook，<strong>内核</strong></td>
+<td>显式函数调用</td>
+</tr>
+<tr>
+<td>进程身份</td>
+<td>内核给的 pid/cgroup</td>
+<td>参数传入的 pid</td>
+</tr>
+<tr>
+<td>能不能被绕过</td>
+<td>不能</td>
+<td><strong>能</strong>（进程不调那个函数就没人知道）</td>
+</tr>
+</tbody></table>
+<p><strong>差异只在&quot;谁来观察&quot;，不在&quot;观察到之后怎么判断&quot;。</strong></p>
+<p>而&quot;谁来观察&quot;恰恰是安全性所在——真实实现里进程<strong>无法选择不被观察</strong>，demo 里它可以。这是这一步唯一不能靠模拟跨过去的地方。</p>
+<hr>
+<h2>这一章要记住的</h2>
+<p><strong>审批的目标不是&quot;拦下所有危险操作&quot;，而是&quot;只打扰该被打扰的那部分&quot;。</strong></p>
+<p>判断一个 agent 安全系统做得好不好，除了&quot;能不能挡住攻击&quot;，还要看第二个指标：</p>
+<blockquote>
+<p>一个正常的、没有碰过用户数据的任务，用户需要点几次&quot;允许&quot;？</p>
+</blockquote>
+<p>这个数字接近零，用户才会在真正需要时认真看那个弹窗。</p>
+<p>下一章讲最后一件事：模型说&quot;我做完了&quot;的时候，系统怎么知道它是真的做完了。</p>
+
+</section>
+
+<section id="ch8" class="chapter">
+  <div class="chapter-head">
+    <span class="chapter-index">08</span>
+    <h2>状态机：模型只能解释状态</h2>
+  </div>
+  <blockquote>
+<p><strong>代码</strong>：<code>code/step8-state-machine.mjs</code><br><strong>官方来源</strong>：<a href="https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse">How We Built Safety Into Muse</a>（activity audit trail 部分）</p>
+</blockquote>
+<h2>我原以为这是个小问题</h2>
+<p>模型说&quot;已经帮你改好了&quot;，但实际上补丁没打上。这算 bug 吗？重试一下就好了吧。</p>
+<p>Muse 把它当架构问题处理。理由是：</p>
+<p><strong>agent 的自然语言天生倾向于&quot;把已经开始说成已经完成&quot;。</strong> 这不是模型在撒谎——它是在生成&quot;最像答案的文本&quot;。你说&quot;帮我改个 bug&quot;，它生成&quot;已经改好了&quot;作为回应，是因为那是最常见的回答形状。</p>
+<p>所以问题不是&quot;怎么让模型更诚实&quot;（那是训练问题），而是**&quot;完成&quot;这件事由谁来说&quot;**。</p>
+<h2>官方怎么说</h2>
+<blockquote>
+<p>Muse surfaces a <strong>full activity audit trail</strong>, letting users see <strong>completed and planned actions</strong>.</p>
+</blockquote>
+<p>&quot;completed&quot; 和 &quot;planned&quot; 是两个不同的状态，而且是<strong>系统</strong>记录的，不是模型描述的。</p>
+<hr>
+<h2>技术 1：状态只能由执行系统产生</h2>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">const</span><span style="color:#BD976A"> LEGAL_TRANSITIONS</span><span style="color:#666666"> =</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#B8A965">  queued</span><span style="color:#666666">:</span><span style="color:#666666">    [</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">running</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">canceled</span><span style="color:#C98A7D77">'</span><span style="color:#666666">],</span></span>
+<span class="line"><span style="color:#B8A965">  running</span><span style="color:#666666">:</span><span style="color:#666666">   [</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">waiting</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">completed</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">failed</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">canceled</span><span style="color:#C98A7D77">'</span><span style="color:#666666">],</span></span>
+<span class="line"><span style="color:#B8A965">  waiting</span><span style="color:#666666">:</span><span style="color:#666666">   [</span><span style="color:#C98A7D77">'</span><span style="color:#C98A7D">running</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">canceled</span><span style="color:#C98A7D77">'</span><span style="color:#666666">,</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">failed</span><span style="color:#C98A7D77">'</span><span style="color:#666666">],</span><span style="color:#758575DD">   // ← waiting 不能直接到 completed</span></span>
+<span class="line"><span style="color:#B8A965">  completed</span><span style="color:#666666">:</span><span style="color:#666666"> [],</span><span style="color:#758575DD">   // 终态</span></span>
+<span class="line"><span style="color:#B8A965">  failed</span><span style="color:#666666">:</span><span style="color:#666666">    [],</span><span style="color:#758575DD">   // 终态</span></span>
+<span class="line"><span style="color:#B8A965">  canceled</span><span style="color:#666666">:</span><span style="color:#666666">  [],</span><span style="color:#758575DD">   // 终态</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p>三个设计点：</p>
+<p><strong>① <code>waiting</code> 不能直接到 <code>completed</code>。</strong> 等审批的时候，你不可能&quot;完成&quot;——因为动作还没执行。这条边不存在，就杜绝了&quot;审批还在排队，回复却说已经做完了&quot;。</p>
+<p><strong>② 终态是终态。</strong> <code>failed</code> 和 <code>completed</code> 都没有出边。Demo 验证：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>🛑 非法迁移：failed → completed（允许：无，终态）</span></span>
+<span class="line"><span>   终态不能复活——否则"失败后被改写成成功"就成立了</span></span></code></pre></figure><p><strong>③ 迁移只能通过一个方法。</strong> <code>transition(id, to)</code> 检查合法性、记录审计轨迹、写证据，一步都不能跳。</p>
+<hr>
+<h2>技术 2：模型侧拿到的是只读 facade</h2>
+<p>和第四步的凭据 facade 是同一个模式：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">function</span><span style="color:#80A665"> modelFacadeFor</span><span style="color:#666666">(</span><span style="color:#BD976A">runtime</span><span style="color:#666666">,</span><span style="color:#BD976A"> taskId</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#4D9375">  return</span><span style="color:#BD976A"> Object</span><span style="color:#666666">.</span><span style="color:#80A665">freeze</span><span style="color:#666666">({</span></span>
+<span class="line"><span style="color:#80A665">    describe</span><span style="color:#666666">:</span><span style="color:#666666"> ()</span><span style="color:#666666"> =></span><span style="color:#BD976A"> runtime</span><span style="color:#666666">.</span><span style="color:#80A665">snapshot</span><span style="color:#666666">(</span><span style="color:#BD976A">taskId</span><span style="color:#666666">),</span><span style="color:#758575DD">   // ← 只有读</span></span>
+<span class="line"><span style="color:#758575DD">    // 没有 setState / transition / markCompleted</span></span>
+<span class="line"><span style="color:#666666">  })</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p>Demo 验证：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>模型 facade 暴露的方法：describe</span></span>
+<span class="line"><span>有没有 setState / transition / markCompleted？没有</span></span>
+<span class="line"><span>✅ 模型这一侧根本没有能改状态的接口——这是能力隔离，不是检查</span></span></code></pre></figure><p><strong>注意措辞</strong>：不是&quot;模型不能改状态&quot;，是&quot;<strong>模型这一侧没有能改状态的对象</strong>&quot;。</p>
+<p>这是第三次出现同一个模式了：</p>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>隔离什么</th>
+<th>怎么隔离</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>授权能力</td>
+<td>控制面没有 <code>grant</code> 接口</td>
+</tr>
+<tr>
+<td>4</td>
+<td>凭据</td>
+<td>cell 只拿到 facade</td>
+</tr>
+<tr>
+<td>8</td>
+<td>任务状态</td>
+<td>模型只拿到 <code>describe</code></td>
+</tr>
+</tbody></table>
+<p><strong>一个系统里同一个模式出现三次，说明它是这个架构的基本原则，不是局部技巧。</strong></p>
+<hr>
+<h2>技术 3：渲染时以事实为准</h2>
+<p>即使模型说错了，呈现给用户的内容也要以状态为准：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#CB7676">function</span><span style="color:#80A665"> renderResponse</span><span style="color:#666666">(</span><span style="color:#BD976A">modelText</span><span style="color:#666666">,</span><span style="color:#BD976A"> snapshot</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#CB7676">  const</span><span style="color:#BD976A"> claimLooksDone</span><span style="color:#666666"> =</span><span style="color:#C98A7D77"> /</span><span style="color:#666666">(</span><span style="color:#C4704F">已完成</span><span style="color:#CB7676">|</span><span style="color:#C4704F">完成了</span><span style="color:#CB7676">|</span><span style="color:#C4704F">已修复</span><span style="color:#CB7676">|</span><span style="color:#6872AB">...</span><span style="color:#666666">)</span><span style="color:#C98A7D77">/</span><span style="color:#666666">.</span><span style="color:#80A665">test</span><span style="color:#666666">(</span><span style="color:#BD976A">modelText</span><span style="color:#666666">)</span></span>
+<span class="line"><span style="color:#CB7676">  const</span><span style="color:#BD976A"> actuallyDone</span><span style="color:#666666"> =</span><span style="color:#BD976A"> snapshot</span><span style="color:#666666">.</span><span style="color:#BD976A">state</span><span style="color:#CB7676"> ===</span><span style="color:#C98A7D77"> '</span><span style="color:#C98A7D">completed</span><span style="color:#C98A7D77">'</span></span>
+<span class="line"><span style="color:#4D9375">  if</span><span style="color:#666666"> (</span><span style="color:#BD976A">claimLooksDone</span><span style="color:#CB7676"> &#x26;&#x26;</span><span style="color:#CB7676"> !</span><span style="color:#BD976A">actuallyDone</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#4D9375">    return</span><span style="color:#666666"> {</span><span style="color:#B8A965"> corrected</span><span style="color:#666666">:</span><span style="color:#4D9375"> true</span><span style="color:#666666">,</span><span style="color:#B8A965"> text</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> `</span><span style="color:#C98A7D">[已修正措辞] </span><span style="color:#4D9375">${</span><span style="color:#C98A7D">modelText</span><span style="color:#4D9375">}</span><span style="color:#C98A7D77">`</span><span style="color:#666666">,</span><span style="color:#B8A965"> banner</span><span style="color:#666666">:</span><span style="color:#C98A7D77"> `</span><span style="color:#C98A7D">实际状态：</span><span style="color:#4D9375">${</span><span style="color:#C98A7D">snapshot</span><span style="color:#666666">.</span><span style="color:#C98A7D">state</span><span style="color:#4D9375">}</span><span style="color:#C98A7D77">`</span><span style="color:#666666"> }</span></span>
+<span class="line"><span style="color:#666666">  }</span></span>
+<span class="line"><span style="color:#666666">  ...</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p>跑出来：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>▸ 模型把失败说成了成功</span></span>
+<span class="line"><span>  模型说：parseDate 的时区问题已修复，测试都通过了</span></span>
+<span class="line"><span>  🛑 实际状态：failed</span></span>
+<span class="line"><span>     呈现给用户：[已修正措辞] parseDate 的时区问题已修复，测试都通过了</span></span></code></pre></figure><p><strong>模型的话没有被替换掉，而是被标注了。</strong> 这个细节很重要：</p>
+<ul>
+<li>完全替换模型的话 → 丢失了它的解释价值</li>
+<li>原样显示 → 用户被误导</li>
+<li><strong>标注 + 状态横幅</strong> → 用户既看到模型的解释，也看到事实</li>
+</ul>
+<hr>
+<h2>技术 4：正交的失败分类</h2>
+<p>Muse 的失败不是&quot;成功/失败&quot;二元，而是一组<strong>正交</strong>的事实。官方在三态裁决里给了三个：</p>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Lifecycle</strong></td>
+<td><code>queued / running / waiting / completed / failed / canceled</code></td>
+</tr>
+<tr>
+<td><strong>Authority</strong></td>
+<td><code>proposed / allowed / denied / ask / expired</code></td>
+</tr>
+<tr>
+<td><strong>Evidence</strong></td>
+<td><code>tool_result / error / citation / artifact / approval receipt</code></td>
+</tr>
+</tbody></table>
+<p><strong>&quot;正交&quot;的意思是它们可以任意组合</strong>：</p>
+<ul>
+<li>状态 <code>failed</code> + 授权 <code>allowed</code> + 证据 <code>error</code> → 授权没问题，是执行失败</li>
+<li>状态 <code>waiting</code> + 授权 <code>ask</code> → 卡在审批</li>
+<li>状态 <code>completed</code> + 授权 <code>allowed</code> + 证据 <code>approval_receipt</code> → 审批后成功</li>
+</ul>
+<p>把它们压成一个枚举（比如只有 <code>success</code> / <code>failure</code>），信息就丢了：<strong>同样是失败，是&quot;没被允许&quot;还是&quot;允许了但执行失败&quot;，处理方式完全不同。</strong></p>
+<p>这和第三步讲 PTC 失败分类时是同一个道理：<strong>预算到期不是异常，中止不是超时，基底死亡两者都不是。</strong></p>
+<hr>
+<h2>技术 5：action identity —— 审计轨迹的前提</h2>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#80A665">createTask</span><span style="color:#666666">(</span><span style="color:#BD976A">label</span><span style="color:#666666">)</span><span style="color:#666666"> {</span></span>
+<span class="line"><span style="color:#CB7676">  const</span><span style="color:#BD976A"> id</span><span style="color:#666666"> =</span><span style="color:#C98A7D77"> `</span><span style="color:#C98A7D">task_</span><span style="color:#4D9375">${</span><span style="color:#CB7676">++</span><span style="color:#C99076">this</span><span style="color:#666666">.</span><span style="color:#C98A7D">#nextId</span><span style="color:#4D9375">}</span><span style="color:#C98A7D77">`</span></span>
+<span class="line"><span style="color:#666666">  ...</span></span>
+<span class="line"><span style="color:#666666">}</span></span></code></pre></figure><p>每个动作有稳定 id，每次迁移都记：</p>
+<figure class="code"><figcaption>js</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span style="color:#BD976A">task</span><span style="color:#666666">.</span><span style="color:#BD976A">transitions</span><span style="color:#666666">.</span><span style="color:#80A665">push</span><span style="color:#666666">({</span><span style="color:#BD976A"> to</span><span style="color:#666666">,</span><span style="color:#B8A965"> at</span><span style="color:#666666">:</span><span style="color:#BD976A"> Date</span><span style="color:#666666">.</span><span style="color:#80A665">now</span><span style="color:#666666">(),</span><span style="color:#BD976A"> by</span><span style="color:#666666"> })</span></span></code></pre></figure><p>Demo 输出：</p>
+<figure class="code"><figcaption>text</figcaption><pre class="shiki vitesse-dark" style="background-color:#121212;color:#dbd7caee" tabindex="0"><code><span class="line"><span>任务 task_7 的证据：</span></span>
+<span class="line"><span>  approval_receipt: approval_7 by user</span></span>
+<span class="line"><span>每个动作都有稳定 id + 证据链，用户才能看到"完成了什么、计划做什么"</span></span></code></pre></figure><p><strong>没有稳定 id，就没有审计轨迹。</strong> 你只能看到一堆&quot;某处发生了某事&quot;的日志，无法回答&quot;用户问的那件事最后怎么了&quot;。</p>
+<hr>
+<h2>这一章要记住的</h2>
+<p><strong>模型是生成系统，它的输出&quot;最像答案&quot;而不是&quot;最接近事实&quot;。状态是执行系统的事实。</strong></p>
+<p>两者必须分开，而且渲染时以事实为准。</p>
+<p>判断一个 agent 系统在这点上做得好不好，问一个问题：</p>
+<blockquote>
+<p>模型能不能让&quot;任务已完成&quot;变成真的？</p>
+</blockquote>
+<p>如果答案依赖&quot;我们检查了它的措辞&quot;，那答案是<strong>能</strong>。</p>
+
+</section></article>
+</main>
+
+<footer>
+  每章配的代码都在 <code>code/</code> 下，单独 <code>node</code> 就能跑。<b>本页完全自包含，离线可读。</b>
+</footer>
+
+<script>
+const bar = document.getElementById('bar')
+const links = [...document.querySelectorAll('aside nav a')]
+const sections = links.map(a => document.getElementById(a.dataset.target))
+
+addEventListener('scroll', () => {
+  const h = document.documentElement
+  bar.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%'
+
+  let current = sections[0]
+  for (const s of sections) if (s.getBoundingClientRect().top <= 120) current = s
+  links.forEach(a => a.classList.toggle('active', a.dataset.target === current.id))
+}, { passive: true })
+</script>
+</body>
+</html>
