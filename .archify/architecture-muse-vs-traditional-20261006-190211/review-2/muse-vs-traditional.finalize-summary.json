@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/candidate.json",
+    "sha256": "ed4937b2bda9005e6d68d08d5f30b7ba47a5643456fc91f5251f20c1d1dcf5df",
+    "bytes": 7040
+  },
+  "artifact": {
+    "path": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/muse-vs-traditional.html",
+    "sha256": "20d696b859b0769a29f94d3cf62d93fb508d3e1cd42d3fe9bfa657d7448cb63a",
+    "bytes": 769722
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/review-2/muse-vs-traditional.finalize.json",
+    "summaryReceipt": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/review-2/muse-vs-traditional.finalize-summary.json",
+    "browserCheckReceipt": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/review-2/muse-vs-traditional.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-06T11:02:21.705Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 1528,
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 1,
+      "routesOverSuggestedBends": 2,
+      "routesOverSuggestedStretch": 2
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "l-agent-tools",
+            "from": "l-agent",
+            "to": "l-tools",
+            "label": "调用前先过检查",
+            "collectionIndex": 1,
+            "artifactIndex": 2
+          },
+          "right": {
+            "id": "l-check-tools",
+            "from": "l-check",
+            "to": "l-tools",
+            "label": "检查通过",
+            "collectionIndex": 2,
+            "artifactIndex": 3
+          },
+          "point": [
+            212,
+            386
+          ],
+          "sharedNode": "l-tools"
+        }
+      ],
+      "detours": [
+        {
+          "relationship": {
+            "id": "l-agent-tools",
+            "from": "l-agent",
+            "to": "l-tools",
+            "label": "调用前先过检查",
+            "collectionIndex": 1,
+            "artifactIndex": 2
+          },
+          "bends": 4,
+          "stretch": 2.093,
+          "directCorridorBlockers": [
+            {
+              "id": "l-check",
+              "label": "权限检查",
+              "box": [
+                120,
+                300,
+                170,
+                66
+              ]
+            }
+          ]
+        },
+        {
+          "relationship": {
+            "id": "r-privsep-authd",
+            "from": "r-privsep",
+            "to": "r-authd",
+            "label": "按 cgroup 身份取凭据",
+            "collectionIndex": 7,
+            "artifactIndex": 8
+          },
+          "bends": 4,
+          "stretch": 1.821
+        }
+      ],
+      "truncated": false
+    },
+    "hints": [
+      "l-agent → l-tools and l-check → l-tools cross next to l-tools: move node l-agent or l-check so the two reach l-tools from different sides (for example one level with it, one directly above or below it).",
+      "r-privsep → r-authd needs 4 bends: move node r-privsep or r-authd so they share a row or column with matching centers, or sit diagonally with a clear corner."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

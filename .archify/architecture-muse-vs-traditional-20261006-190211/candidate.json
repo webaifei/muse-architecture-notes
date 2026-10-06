@@ -1,0 +1,336 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "传统 Agent 设计与 Meta Muse 的安全架构对比",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-muse-vs-traditional-20261006-190211/muse-vs-traditional.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "l-user",
+      "type": "external",
+      "label": "用户 / 客户端",
+      "sublabel": "发一句话",
+      "pos": [
+        120,
+        60
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "l-agent",
+      "type": "backend",
+      "label": "Agent harness",
+      "sublabel": "推理循环",
+      "pos": [
+        120,
+        190
+      ],
+      "size": [
+        170,
+        66
+      ]
+    },
+    {
+      "id": "l-check",
+      "type": "security",
+      "label": "权限检查",
+      "sublabel": "同一进程内",
+      "pos": [
+        120,
+        300
+      ],
+      "size": [
+        170,
+        66
+      ]
+    },
+    {
+      "id": "l-tools",
+      "type": "backend",
+      "label": "工具 / 命令",
+      "sublabel": "直接执行",
+      "pos": [
+        120,
+        410
+      ],
+      "size": [
+        170,
+        66
+      ]
+    },
+    {
+      "id": "l-creds",
+      "type": "security",
+      "label": "真实凭据",
+      "sublabel": "环境变量 / 配置文件",
+      "pos": [
+        400,
+        410
+      ],
+      "size": [
+        150,
+        66
+      ]
+    },
+    {
+      "id": "l-ext",
+      "type": "cloud",
+      "label": "外部服务",
+      "sublabel": "GitHub / Gmail",
+      "pos": [
+        120,
+        540
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "r-ext",
+      "type": "cloud",
+      "label": "外部服务",
+      "sublabel": "GitHub / Gmail",
+      "pos": [
+        1055,
+        70
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "r-sentinel",
+      "type": "security",
+      "label": "Sentinel",
+      "sublabel": "唯一权限权威",
+      "tag": "allow / deny / ask",
+      "pos": [
+        1045,
+        210
+      ],
+      "size": [
+        200,
+        70
+      ]
+    },
+    {
+      "id": "r-authd",
+      "type": "security",
+      "label": "hatch-authd",
+      "sublabel": "凭据保险箱",
+      "tag": "surrogate token",
+      "pos": [
+        760,
+        300
+      ],
+      "size": [
+        160,
+        66
+      ]
+    },
+    {
+      "id": "r-privsep",
+      "type": "backend",
+      "label": "privsep worker",
+      "sublabel": "连接器业务逻辑",
+      "tag": "cgroup 身份 + 凭据白名单",
+      "pos": [
+        755,
+        400
+      ],
+      "size": [
+        170,
+        66
+      ]
+    },
+    {
+      "id": "r-hatch",
+      "type": "backend",
+      "label": "Hatch harness",
+      "sublabel": "agent 本体",
+      "pos": [
+        1050,
+        540
+      ],
+      "size": [
+        190,
+        66
+      ]
+    },
+    {
+      "id": "r-tools",
+      "type": "backend",
+      "label": "工具 / 二进制",
+      "sublabel": "解析参数，交出 fd",
+      "pos": [
+        820,
+        540
+      ],
+      "size": [
+        180,
+        66
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "单个进程 · 与宿主同权限",
+      "wraps": [
+        "l-agent",
+        "l-check",
+        "l-tools",
+        "l-creds"
+      ],
+      "pad": 26
+    },
+    {
+      "kind": "security-group",
+      "label": "Host domain · 控制面（agent 够不着）",
+      "wraps": [
+        "r-sentinel",
+        "r-authd",
+        "r-privsep"
+      ],
+      "pad": 26
+    },
+    {
+      "kind": "region",
+      "label": "Runtime cell · 不可信域（systemd-nspawn）",
+      "wraps": [
+        "r-hatch",
+        "r-tools"
+      ],
+      "pad": 26
+    }
+  ],
+  "connections": [
+    {
+      "id": "l-user-agent",
+      "from": "l-user",
+      "to": "l-agent",
+      "label": "发一句话",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "l-agent-check",
+      "from": "l-agent",
+      "to": "l-check",
+      "label": "调用前先过检查",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "l-check-tools",
+      "from": "l-check",
+      "to": "l-tools",
+      "label": "检查通过",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "l-creds-tools",
+      "from": "l-creds",
+      "to": "l-tools",
+      "label": "读明文凭据",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "l-tools-ext",
+      "from": "l-tools",
+      "to": "l-ext",
+      "label": "直连出网，凭据随请求带走",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "r-sentinel-ext",
+      "from": "r-sentinel",
+      "to": "r-ext",
+      "label": "唯一网络出口 · L4/L7 检查",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "r-hatch-sentinel",
+      "from": "r-hatch",
+      "to": "r-sentinel",
+      "label": "提议动作 · Unix socket + SO_PEERCRED",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "r-privsep-authd",
+      "from": "r-privsep",
+      "to": "r-authd",
+      "label": "按 cgroup 身份取凭据",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "r-authd-sentinel",
+      "from": "r-authd",
+      "to": "r-sentinel",
+      "label": "surrogate → 真实凭据",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "r-hatch-tools",
+      "from": "r-hatch",
+      "to": "r-tools",
+      "label": "调用",
+      "fromSide": "left",
+      "toSide": "right"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "传统：一个域，全都在一起",
+      "items": [
+        "agent、工具、凭据、检查跑在同一个进程",
+        "权限检查是可被绕过的代码，不是结构性边界",
+        "凭据是环境变量，agent 读得到",
+        "出网没有中介，检查与执行共用一个地址空间"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Muse：两个域，一条窄通道",
+      "items": [
+        "Runtime cell 跑 agent，被当成不可信区",
+        "Host domain 放裁决、凭据、特权代码",
+        "两个域只通过 Unix socket + SO_PEERCRED 通信",
+        "凭据只在出口替换，agent 全程看不到真值"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "控制面里还有什么（图中未展开）",
+      "items": [
+        "hatch-safety：独立分类器，检查进出模型的请求与响应",
+        "Postgres：持久状态，与 cell 和凭据库分开",
+        "推理与遥测代理：通往外部基础设施的受限路径",
+        "cell 另有独立根文件系统、seccomp 过滤、受限 capabilities"
+      ]
+    }
+  ]
+}

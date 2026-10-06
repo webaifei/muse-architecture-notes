@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/candidate.json",
+    "sha256": "ed4937b2bda9005e6d68d08d5f30b7ba47a5643456fc91f5251f20c1d1dcf5df",
+    "bytes": 7040
+  },
+  "artifact": {
+    "path": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/muse-vs-traditional.html",
+    "sha256": "20d696b859b0769a29f94d3cf62d93fb508d3e1cd42d3fe9bfa657d7448cb63a",
+    "bytes": 769722
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/evidence-path-conflict",
+      "severity": "error",
+      "message": "browser-check will not replace the existing unowned evidence path \"/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/muse-vs-traditional.browser-check.json\".",
+      "subject": {
+        "artifact": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/muse-vs-traditional.html",
+        "evidencePath": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/muse-vs-traditional.browser-check.json"
+      },
+      "evidence": {
+        "reason": {
+          "code": "ownership-artifact-mismatch"
+        }
+      },
+      "supportedFixes": [
+        "move the conflicting file aside, or choose a separate --out-dir, then rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/muse-vs-traditional.finalize.json",
+    "summaryReceipt": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/muse-vs-traditional.finalize-summary.json",
+    "browserCheckReceipt": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/muse-vs-traditional.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-06T11:02:21.705Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 642
+}

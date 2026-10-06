@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "d3507397-111d-49eb-8475-a3844d457d45",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/candidate.json",
+  "output": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-vs-traditional-20261006-190211/muse-vs-traditional.html",
+  "specification": {
+    "sha256": "1e85923974268959559cbc2c0fc80862cc0f454b6ed4816fc064fb024cd976f3",
+    "bytes": 7040
+  },
+  "artifact": {
+    "sha256": "b0d0b51a5a277d84d4026f46dbd65eaae3ef44ed01e9df668667931a037c8d96",
+    "bytes": 769224
+  }
+}
