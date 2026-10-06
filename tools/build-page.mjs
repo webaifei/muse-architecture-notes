@@ -1,11 +1,18 @@
 /**
  * 把 Markdown 章节构建成单文件 index.html。
  *
- * 依赖（在仓库根目录安装）：marked、shiki
- *   npm i -D marked shiki
+ * 版式取自阮一峰博客（ruanyifeng.com）的实际 CSS：
+ *   body        background #f5f5d5 · Georgia,serif · font-size 62.5% · line-height 1.8em
+ *   #container  width 65% · min 640px · max 960px · 居中
+ *   .entry-body margin-left 1em · padding-left .4em · border-left .4em solid gray
+ *   标题        2.88em · font-weight 500 · border-bottom 1px #d3d3d3
+ *   正文        font-size 1.6em · line-height 180%
+ *   行内代码     pink 背景 · border-radius 5px
+ *   代码块       #f5f2f0 背景
+ *   链接         #223472 · hover #d03500
  *
- * 用法：
- *   node tools/build-page.mjs
+ * 依赖：npm i -D marked shiki
+ * 用法：node tools/build-page.mjs
  */
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
 import { join, basename } from 'node:path'
@@ -13,7 +20,7 @@ import { marked } from 'marked'
 import { createHighlighter } from 'shiki'
 
 const ROOT = new URL('..', import.meta.url).pathname
-const THEME = 'vitesse-dark'
+const THEME = 'min-light'
 
 const highlighter = await createHighlighter({
   themes: [THEME],
@@ -25,57 +32,37 @@ marked.use({
     code({ text, lang }) {
       const language = highlighter.getLoadedLanguages().includes(lang) ? lang : 'text'
       const html = highlighter.codeToHtml(text, { lang: language, theme: THEME })
-      return `<figure class="code"><figcaption>${language}</figcaption>${html}</figure>`
+      return `<div class="codeblock">${html}</div>`
     },
   },
 })
 
 const render = (markdown) => marked.parse(markdown)
 
-// ── 收集章节 ──────────────────────────────────────────────────────────
-const files = readdirSync(ROOT)
-  .filter((name) => /^ch\d+.*\.md$/.test(name))
-  .sort()
+// PAGE_FILES 可指定只构建哪几篇（逗号分隔），用来单独预览一章
+const files = process.env.PAGE_FILES
+  ? process.env.PAGE_FILES.split(',').map((s) => s.trim())
+  : readdirSync(ROOT)
+      .filter((name) => /^ch\d+.*\.md$/.test(name))
+      .sort()
 
-const chapters = files.map((file, index) => {
+const chapters = files.map((file) => {
   const markdown = readFileSync(join(ROOT, file), 'utf8')
   const title = markdown.match(/^#\s+(.+)$/m)?.[1] ?? basename(file, '.md')
-  const short = title.replace(/^[一二三四五六七八九十]+、/, '')
-  // 去掉正文里的 h1，标题交给外层容器渲染
-  return {
-    id: `ch${index + 1}`,
-    file,
-    title,
-    short,
-    html: render(markdown.replace(/^#\s+.+$/m, '')),
-  }
+  return { file, title, id: file.replace(/\.md$/, ''), html: render(markdown) }
 })
 
 const readme = readFileSync(join(ROOT, 'README.md'), 'utf8')
-// 取 README 标题后的前两段做导语；走 inline 渲染，否则反引号会原样显示
-const lede = marked.parseInline(
+const intro = marked.parseInline(
   readme.replace(/^#\s+.+$/m, '').trim().split('\n\n').slice(0, 2).join(' '),
 )
 
-// ── 页面 ──────────────────────────────────────────────────────────────
-const nav = chapters
-  .map(
-    (chapter, index) =>
-      `<a href="#${chapter.id}" data-target="${chapter.id}"><span class="num">${String(index + 1).padStart(2, '0')}</span>${chapter.short}</a>`,
-  )
+const toc = chapters
+  .map((c, i) => `      <li><a href="#${c.id}">${c.title}</a>（第 ${i + 1} 篇）</li>`)
   .join('\n')
 
 const body = chapters
-  .map(
-    (chapter, index) => `
-<section id="${chapter.id}" class="chapter">
-  <div class="chapter-head">
-    <span class="chapter-index">${String(index + 1).padStart(2, '0')}</span>
-    <h2>${chapter.title.replace(/^[一二三四五六七八九十]+、/, '')}</h2>
-  </div>
-  ${chapter.html}
-</section>`,
-  )
+  .map((c) => `\n<article class="hentry" id="${c.id}">\n${c.html}\n</article>\n`)
   .join('\n')
 
 const html = `<!doctype html>
@@ -83,148 +70,144 @@ const html = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Muse 的创新不在 agent loop 里</title>
-<meta name="description" content="把 Meta Muse 的安全架构从零实现一遍：两个信任域、Sentinel 裁决、凭据代理、SSRF 防御、privsep、tainted egress、状态机。八步，每步一个可运行 demo。">
+<title>Muse 架构剖析</title>
 <style>
-:root{
-  --bg:#fbfaf7; --panel:#fff; --fg:#191817; --muted:#6d6a63; --line:#e7e3da;
-  --accent:#b45309; --accent-soft:#fdf3e3;
-  --sidebar:264px; --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+html { font-size: 62.5%; }
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f5f5d5;
+  font-family: Georgia, "Songti SC", "SimSun", serif;
+  letter-spacing: -0.01em;
+  word-spacing: .2em;
+  line-height: 1.8em;
+  color: #111;
 }
-@media (prefers-color-scheme:dark){
-  :root{ --bg:#141413; --panel:#1b1b19; --fg:#ecebe7; --muted:#96938b; --line:#2c2b28;
-         --accent:#f0a45b; --accent-soft:#241d13; }
+#container {
+  width: 65%;
+  min-width: 640px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1em 1em 6em 1em;
+  background-color: #f5f5d5;
 }
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--fg);
-  font:16px/1.85 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  -webkit-font-smoothing:antialiased}
+#header { border-bottom: 1px solid #d3d3d3; padding-bottom: .6em; margin-bottom: 1.5em; }
+#header h1 { font-size: 2.4em; font-weight: 500; margin: .6em 0 .2em 0; letter-spacing: -0.03em; }
+#header h1 a { color: #567; text-decoration: none; }
+#header-description { font-size: 1.4em; color: #567; }
+#header nav { font-size: 1.4em; margin-top: .6em; }
+#header nav a { color: #567; text-decoration: underline; }
 
-.progress{position:fixed;top:0;left:0;right:0;height:2px;z-index:50;background:transparent}
-.progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s linear}
+.intro { font-size: 1.6em; line-height: 185%; margin: 0 0 2em .8em; }
+.toc { font-size: 1.5em; line-height: 190%; margin: 0 0 3em .8em; padding-left: 1em; }
+.toc li { list-style-type: square; }
+.toc a { color: #223472; }
 
-aside{position:fixed;top:0;bottom:0;left:0;width:var(--sidebar);padding:32px 20px 40px;
-  border-right:1px solid var(--line);overflow-y:auto;background:var(--panel)}
-.brand{font-size:13px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
-.brand-title{font-size:15px;font-weight:600;line-height:1.5;margin:0 0 24px;color:var(--fg)}
-aside nav{display:flex;flex-direction:column;gap:2px}
-aside nav a{display:flex;gap:10px;align-items:baseline;padding:8px 10px;border-radius:7px;
-  color:var(--muted);text-decoration:none;font-size:14px;line-height:1.5;transition:.15s}
-aside nav a:hover{background:var(--accent-soft);color:var(--fg)}
-aside nav a.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
-aside nav .num{font:11px/1 var(--mono);opacity:.55}
-.sidebar-foot{margin-top:28px;padding-top:18px;border-top:1px solid var(--line);
-  font-size:12px;color:var(--muted);line-height:1.8}
-.sidebar-foot a{color:var(--muted)}
+/* 正文左灰线——他的标志 */
+article.hentry { margin: 0 0 6em 1em; padding-left: .4em; border-left: .4em solid gray; }
 
-main{margin-left:var(--sidebar);padding:0 56px 140px;max-width:900px}
+article h1 {
+  font-size: 2.88em;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: #000;
+  margin: .4em 0 .2em 0;
+  padding: 0 0 .2em 0;
+  border-bottom: 1px solid #d3d3d3;
+  line-height: 1.35em;
+}
+article h2 {
+  font-size: 2.2em;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: #000;
+  margin: 1.6em 0 .2em 0;
+  padding: 0 0 .2em 0;
+  border-bottom: 1px solid #d3d3d3;
+}
+article h3 { font-size: 1.8em; font-weight: 500; margin: 1.2em 0 .2em 0; }
+article p {
+  font-size: 1.6em;
+  line-height: 190%;
+  margin: 1em 0 0 .8em;
+}
+article p code {
+  display: inline-block;
+  padding: 0 5px;
+  font-size: 120%;
+  font-family: Consolas, Monaco, "Andale Mono", monospace;
+  background-color: pink;
+  border-radius: 5px;
+  margin: auto 3px;
+}
+article a { color: #223472; text-decoration: underline; }
+article a:hover { color: #d03500; }
+article ul, article ol { font-size: 1.6em; line-height: 190%; margin: 1em 0 0 2.2em; }
+article ul li { list-style-type: square; }
+article ol li { list-style-type: decimal; }
+article blockquote {
+  background-color: #f5f2f0;
+  padding: .8em 1.2em;
+  margin: 1.6em 2em;
+  border-radius: 1em;
+  font-size: 1.4em;
+  line-height: 180%;
+  color: #333;
+}
+article blockquote p { font-size: 100%; margin: .3em 0 0 0; }
+article hr { border: 0; border-top: 1px solid #d3d3d3; margin: 2.4em 0 0 .8em; }
+.codeblock { margin: 1.4em .8em; }
+.codeblock pre {
+  background: #f5f2f0 !important;
+  padding: .8em 1em;
+  border-radius: .6em;
+  overflow-x: auto;
+}
+.codeblock code { font-family: Consolas, Monaco, "Andale Mono", monospace; font-size: 1.35em; line-height: 1.7; }
 
-.hero{padding:88px 0 40px;border-bottom:1px solid var(--line)}
-.hero .kicker{font:12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
-.hero h1{font-size:40px;line-height:1.35;margin:0 0 20px;letter-spacing:-.01em}
-.hero p{font-size:17px;color:var(--muted);margin:0 0 28px;max-width:640px}
-.stats{display:flex;gap:28px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
-.stats b{color:var(--fg);font-weight:600}
+#footer {
+  border-top: 1px solid #d3d3d3;
+  margin-top: 4em;
+  padding-top: 1.4em;
+  font-size: 1.4em;
+  color: gray;
+}
+#footer code { background: pink; padding: 0 4px; border-radius: 4px; }
 
-.loops{margin:36px 0 0;font:12px/1.7 var(--mono);color:var(--muted)}
-.loops .l1{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:12px 16px}
-.loops .l2{border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:8px;padding:12px 16px;margin:8px 0 8px 16px}
-.loops .l3{border:1px solid var(--line);border-left:3px solid var(--line);border-radius:8px;padding:12px 16px;margin:8px 0 0 16px}
-.loops em{font-style:normal;color:var(--fg)}
-
-.chapter{padding:52px 0 8px;scroll-margin-top:24px}
-.chapter-head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
-.chapter-index{font:13px/1 var(--mono);color:var(--accent);padding-top:6px}
-.chapter-head h2{font-size:27px;margin:0;letter-spacing:-.01em}
-
-article h2{font-size:21px;margin:44px 0 14px;padding-top:8px}
-article h3{font-size:17px;margin:32px 0 10px;color:var(--fg)}
-article p{margin:0 0 18px}
-article strong{font-weight:600}
-article a{color:var(--accent)}
-article ul,article ol{padding-left:22px;margin:0 0 18px}
-article li{margin:6px 0}
-article blockquote{margin:0 0 22px;padding:12px 18px;border-left:3px solid var(--accent);
-  background:var(--accent-soft);border-radius:0 7px 7px 0;font-size:14px;color:var(--muted)}
-article blockquote p{margin:0}
-article hr{border:0;border-top:1px solid var(--line);margin:40px 0}
-article table{width:100%;border-collapse:collapse;margin:0 0 22px;font-size:14px}
-article th,article td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
-article th{color:var(--muted);font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase}
-article code{font:13px/1.5 var(--mono);background:var(--accent-soft);padding:2px 6px;border-radius:5px}
-.code{margin:0 0 24px;border-radius:10px;overflow:hidden;background:#1b1b1f}
-.code figcaption{font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;
-  color:#8b8b93;padding:10px 16px;border-bottom:1px solid #2a2a30}
-.code pre{margin:0;padding:18px 16px;overflow-x:auto}
-.code code{font:13px/1.75 var(--mono);background:none;padding:0}
-.code .shiki{background:#1b1b1f !important}
-
-footer{margin-left:var(--sidebar);padding:40px 56px 90px;border-top:1px solid var(--line);
-  font-size:13px;color:var(--muted);max-width:900px}
-footer a{color:var(--accent)}
-
-@media (max-width:900px){
-  aside{position:static;width:auto;border-right:0;border-bottom:1px solid var(--line);padding:20px}
-  main,footer{margin-left:0;padding-left:22px;padding-right:22px}
-  .hero{padding-top:48px}.hero h1{font-size:29px}
+@media (max-width: 700px) {
+  #container { width: 92%; min-width: 0; }
+  article.hentry { margin-left: .4em; }
+  article p { margin-left: .4em; }
 }
 </style>
 </head>
 <body>
-<div class="progress"><i id="bar"></i></div>
+<div id="container">
 
-<aside>
-  <div class="brand">META MUSE</div>
-  <p class="brand-title">Muse 的创新<br>不在 agent loop 里</p>
-  <nav>${nav}</nav>
-  <div class="sidebar-foot">
-    <a href="https://github.com/webaifei/muse-architecture-notes">源码仓库</a><br>
-    对照 <a href="https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse">Meta 官方博客</a>
-  </div>
-</aside>
-
-<main>
-  <header class="hero">
-    <div class="kicker">从零实现一遍安全架构</div>
-    <h1>Muse 的创新<br>不在 agent loop 里</h1>
-    <p>${lede}</p>
-    <div class="stats">
-      <span><b>8</b> 章</span>
-      <span><b>8</b> 个可运行文件</span>
-      <span>对照 <b>Meta 官方安全博客</b></span>
-    </div>
-    <div class="loops">
-      <div class="l1">如果 agent 被完全控制 <em>—— 最大破坏是什么</em>
-        <div class="l2">Host domain 控制面 <em>—— 拿不到的东西</em>
-          <div class="l3">Runtime cell 不可信域 <em>—— 能做的事</em></div>
-        </div>
-      </div>
-    </div>
+  <header id="header">
+    <h1><a href="#top">Muse 架构剖析</a></h1>
+    <div id="header-description">从零实现一遍 Meta Muse 的安全架构 · 共 ${chapters.length} 篇</div>
+    <nav><a href="#toc">章节列表</a> · <a href="muse-safety-blog-zh.html">Muse 安全博客中英对照</a> · <a href="https://github.com/webaifei/muse-architecture-notes">源码仓库</a></nav>
   </header>
-  <article>${body}</article>
-</main>
 
-<footer>
-  每章配的代码都在 <code>code/</code> 下，单独 <code>node</code> 就能跑。<b>本页完全自包含，离线可读。</b>
-</footer>
+  <div class="intro"><p>${intro}</p></div>
 
-<script>
-const bar = document.getElementById('bar')
-const links = [...document.querySelectorAll('aside nav a')]
-const sections = links.map(a => document.getElementById(a.dataset.target))
+  <div class="toc" id="toc">
+    <p style="font-size:1em;margin-left:0">共 ${chapters.length} 篇：</p>
+    <ul>
+${toc}
+    </ul>
+  </div>
 
-addEventListener('scroll', () => {
-  const h = document.documentElement
-  bar.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%'
+${body}
 
-  let current = sections[0]
-  for (const s of sections) if (s.getBoundingClientRect().top <= 120) current = s
-  links.forEach(a => a.classList.toggle('active', a.dataset.target === current.id))
-}, { passive: true })
-</script>
+  <div id="footer">
+    每篇配的代码都在 <code>code/</code> 下，单独 <code>node</code> 就能跑。本页完全自包含，离线可读。
+  </div>
+
+</div>
 </body>
 </html>`
 
 writeFileSync(join(ROOT, 'index.html'), html)
-console.log(`✅ index.html  ${(Buffer.byteLength(html) / 1024).toFixed(1)} KB，${chapters.length} 章`)
+console.log(`index.html  ${(Buffer.byteLength(html) / 1024).toFixed(1)} KB，${chapters.length} 篇`)

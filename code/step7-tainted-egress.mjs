@@ -19,7 +19,7 @@
  *     据此传播 taint 标记
  *   - 数据流标记（taint tracking）：信息从哪里来，决定它出去时要多小心
  *
- * ⚠️ macOS 上没有 Linux 内核，做不了真 eBPF。本 demo 用**可运行的等价模型**：
+ *  macOS 上没有 Linux 内核，做不了真 eBPF。本 demo 用**可运行的等价模型**：
  *    把 eBPF 的观察点换成显式的钩子调用，taint 传播逻辑完全一致。
  *    差异只在"谁来观察"，不在"观察到之后怎么判断"。
  *
@@ -32,17 +32,17 @@ const say = (depth, ...rest) => console.log('  '.repeat(depth) + rest.join(' '))
 // 策略：窄范围的 auto-allow 白名单（只有 clean 进程能命中）
 // ══════════════════════════════════════════════════════════════════════
 const AUTO_ALLOW = [
-  { host: 'api.github.com', path: '/repos/*/*/issues', methods: ['GET'] },
-  { host: 'api.calendar.example', path: '/events', methods: ['GET'] },
+ { host: 'api.github.com', path: '/repos/*/*/issues', methods: ['GET'] },
+ { host: 'api.calendar.example', path: '/events', methods: ['GET'] },
 ]
 
 function matchesAutoAllow(host, path, method) {
-  return AUTO_ALLOW.some((rule) => {
-    if (rule.host !== host) return false
-    if (!rule.methods.includes(method)) return false
-    const pattern = new RegExp(`^${rule.path.replace(/\*/g, '[^/]+')}$`)
-    return pattern.test(path)
-  })
+ return AUTO_ALLOW.some((rule) => {
+   if (rule.host !== host) return false
+   if (!rule.methods.includes(method)) return false
+   const pattern = new RegExp(`^${rule.path.replace(/\*/g, '[^/]+')}$`)
+   return pattern.test(path)
+ })
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -50,55 +50,55 @@ function matchesAutoAllow(host, path, method) {
 // 真实系统里这些信息由 eBPF 程序提供
 // ══════════════════════════════════════════════════════════════════════
 class Kernel {
-  #procs = new Map()
+ #procs = new Map()
 
-  /** 新建一个工具执行进程——初始 clean */
-  spawnToolProcess(pid, label) {
-    this.#procs.set(pid, { label, tainted: false, taintSource: null, reads: [] })
-    say(3, `[kernel] spawn pid=${pid} (${label}) → clean`)
-  }
+ /** 新建一个工具执行进程——初始 clean */
+ spawnToolProcess(pid, label) {
+   this.#procs.set(pid, { label, tainted: false, taintSource: null, reads: [] })
+   say(3, `[kernel] spawn pid=${pid} (${label}) → clean`)
+ }
 
-  /** eBPF LSM hook 的等价物：观察一次文件读取 */
-  observeRead(pid, path, isUserData) {
-    const proc = this.#procs.get(pid)
-    proc.reads.push(path)
-    if (!isUserData) {
-      say(3, `[kernel] pid=${pid} 读 ${path}（非用户数据，保持 clean）`)
-      return
-    }
-    if (!proc.tainted) {
-      proc.tainted = true
-      proc.taintSource = path
-      say(3, `[kernel] pid=${pid} 读 ${path} ← **用户数据，标记为 tainted**`)
-    }
-  }
+ /** eBPF LSM hook 的等价物：观察一次文件读取 */
+ observeRead(pid, path, isUserData) {
+   const proc = this.#procs.get(pid)
+   proc.reads.push(path)
+   if (!isUserData) {
+     say(3, `[kernel] pid=${pid} 读 ${path}（非用户数据，保持 clean）`)
+     return
+   }
+   if (!proc.tainted) {
+     proc.tainted = true
+     proc.taintSource = path
+     say(3, `[kernel] pid=${pid} 读 ${path} ← **用户数据，标记为 tainted**`)
+   }
+ }
 
-  isTainted(pid) {
-    return this.#procs.get(pid)?.tainted ?? false
-  }
+ isTainted(pid) {
+   return this.#procs.get(pid)?.tainted ?? false
+ }
 
-  label(pid) {
-    return this.#procs.get(pid)?.label ?? `pid=${pid}`
-  }
+ label(pid) {
+   return this.#procs.get(pid)?.label ?? `pid=${pid}`
+ }
 }
 
 // ══════════════════════════════════════════════════════════════════════
 // Sentinel 的出口裁决（带 taint 输入）
 // ══════════════════════════════════════════════════════════════════════
 function decideEgress(kernel, pid, { host, path, method }) {
-  const tainted = kernel.isTainted(pid)
-  const narrowlyScoped = matchesAutoAllow(host, path, method)
+ const tainted = kernel.isTainted(pid)
+ const narrowlyScoped = matchesAutoAllow(host, path, method)
 
-  if (narrowlyScoped && !tainted) {
-    return { decision: 'auto-allow', reason: 'clean 进程 + 目的地在窄白名单内' }
-  }
-  if (tainted) {
-    return {
-      decision: 'ask',
-      reason: `进程读过用户数据（${kernel.isTainted(pid) ? 'tainted' : ''}），失去 auto-allow 资格`,
-    }
-  }
-  return { decision: 'ask', reason: '目的地不在窄白名单内' }
+ if (narrowlyScoped && !tainted) {
+   return { decision: 'auto-allow', reason: 'clean 进程 + 目的地在窄白名单内' }
+ }
+ if (tainted) {
+   return {
+     decision: 'ask',
+     reason: `进程读过用户数据（${kernel.isTainted(pid) ? 'tainted' : ''}），失去 auto-allow 资格`,
+   }
+ }
+ return { decision: 'ask', reason: '目的地不在窄白名单内' }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -107,13 +107,13 @@ function decideEgress(kernel, pid, { host, path, method }) {
 const kernel = new Kernel()
 
 function step(label, pid, target, reads = []) {
-  say(1, `▸ ${label}`)
-  for (const r of reads) kernel.observeRead(pid, r.path, r.isUserData)
-  const result = decideEgress(kernel, pid, target)
-  const icon = result.decision === 'auto-allow' ? '🟢' : '🟡'
-  say(2, `${icon} ${result.decision} — ${result.reason}`)
-  say(2, `   请求 ${target.method} ${target.host}${target.path}`)
-  return result
+ say(1, `▸ ${label}`)
+ for (const r of reads) kernel.observeRead(pid, r.path, r.isUserData)
+ const result = decideEgress(kernel, pid, target)
+ const icon = result.decision === 'auto-allow' ? '' : ''
+ say(2, `${icon} ${result.decision} — ${result.reason}`)
+ say(2, `   请求 ${target.method} ${target.host}${target.path}`)
+ return result
 }
 
 say(0, '【窄白名单】')
@@ -123,7 +123,7 @@ say(0, '')
 say(0, '── 情形 1：clean 进程请求白名单内的目的地 ──')
 kernel.spawnToolProcess(1001, 'list-issues')
 step('只读了一个公开的仓库配置', 1001, { host: 'api.github.com', path: '/repos/a/b/issues', method: 'GET' }, [
-  { path: '/workspace/public.json', isUserData: false },
+ { path: '/workspace/public.json', isUserData: false },
 ])
 say(2, '   ↑ 用户没有被打扰——这就是这一层的价值')
 say(0, '')
@@ -131,7 +131,7 @@ say(0, '')
 say(0, '── 情形 2：同一个进程读了用户数据之后再出网 ──')
 kernel.spawnToolProcess(1002, 'summarize-mail')
 step('先读用户的邮件', 1002, { host: 'api.github.com', path: '/repos/a/b/issues', method: 'GET' }, [
-  { path: '/home/user/mail/2026-10-05.eml', isUserData: true },
+ { path: '/home/user/mail/2026-10-05.eml', isUserData: true },
 ])
 say(2, '   ↑ 目的地完全一样，但因为进程 tainted，降级为人工审批')
 say(0, '')
@@ -144,7 +144,7 @@ say(0, '')
 say(0, '── 情形 4：tainted 进程想往外部发送用户数据 ──')
 kernel.spawnToolProcess(1004, 'upload-report')
 step('读了用户的报表', 1004, { host: 'api.github.com', path: '/repos/a/b/issues', method: 'POST' }, [
-  { path: '/home/user/reports/q3.xlsx', isUserData: true },
+ { path: '/home/user/reports/q3.xlsx', isUserData: true },
 ])
 say(2, '   ↑ POST 不在白名单里（白名单只放 GET），且进程 tainted，双重原因要求审批')
 say(0, '')
