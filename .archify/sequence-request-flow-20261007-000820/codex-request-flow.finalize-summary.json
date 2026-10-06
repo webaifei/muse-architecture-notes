@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.json",
+    "sha256": "5a7c0f81c7d4a32f3d7646331c535a99db16c6685be225ebb55433f646fabcbb",
+    "bytes": 5810
+  },
+  "artifact": {
+    "path": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.html",
+    "sha256": "1b98d27808595fa99d5961a6e3c32711221d47042569334968a300397783dd26",
+    "bytes": 762683
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/evidence-path-conflict",
+      "severity": "error",
+      "message": "browser-check will not replace the existing unowned evidence path \"/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.browser-check.json\".",
+      "subject": {
+        "artifact": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.html",
+        "evidencePath": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.browser-check.json"
+      },
+      "evidence": {
+        "reason": {
+          "code": "ownership-artifact-mismatch"
+        }
+      },
+      "supportedFixes": [
+        "move the conflicting file aside, or choose a separate --out-dir, then rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.finalize.json",
+    "summaryReceipt": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.finalize-summary.json",
+    "browserCheckReceipt": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-06T11:02:21.705Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 558
+}

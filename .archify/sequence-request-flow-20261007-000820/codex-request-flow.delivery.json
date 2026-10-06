@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "c1414aec-58b0-4d93-b010-5a5d3dbc036d",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.json",
+  "output": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.html",
+  "specification": {
+    "sha256": "208fef216b16d555f75a72811720644bcefd8a040a7bad5d4219bd45ed886659",
+    "bytes": 5813
+  },
+  "artifact": {
+    "sha256": "43293ea31934985438296c962cc028618726a1917cd9597b95ac031a4528bb0d",
+    "bytes": 762643
+  }
+}

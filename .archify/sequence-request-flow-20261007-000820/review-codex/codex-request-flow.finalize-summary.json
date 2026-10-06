@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.json",
+    "sha256": "05294108e66fe49fb5dbd0a4363c0180f3ef7fdb989e3c964b9f8d9e6e3fabcc",
+    "bytes": 5856
+  },
+  "artifact": {
+    "path": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.html",
+    "sha256": "1b98d27808595fa99d5961a6e3c32711221d47042569334968a300397783dd26",
+    "bytes": 762683
+  },
+  "gates": {
+    "validate": "fail",
+    "deliver": "not-run",
+    "check": "not-run",
+    "browser-check": "not-run"
+  },
+  "failedStage": "validate",
+  "diagnostics": [
+    {
+      "code": "layout/constraint",
+      "severity": "error",
+      "message": "Message \"呈现结果\" sits outside the readable timeline — keep y between 160 and 497.",
+      "subject": {
+        "diagramType": "sequence"
+      }
+    },
+    {
+      "code": "layout/constraint",
+      "severity": "error",
+      "message": "Sequence content ends at y=512, leaving no room for the legend below it — set meta.viewBox[1] to at least 610 or omit meta.viewBox so the canvas grows.",
+      "subject": {
+        "diagramType": "sequence"
+      }
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 2,
+    "shown": 2,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/review-codex/codex-request-flow.finalize.json",
+    "summaryReceipt": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/review-codex/codex-request-flow.finalize-summary.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-06T11:02:21.705Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 208,
+  "nextAction": {
+    "action": "edit-in-place",
+    "candidate": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/codex-request-flow.json",
+    "constraint": "Preserve unaffected semantics and geometry; do not replace the whole candidate.",
+    "then": "finalize-once"
+  }
+}

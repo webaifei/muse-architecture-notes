@@ -11,5 +11,14 @@
     - credential surrogation
 5. Sentinel
     - 看起来是负责链接privsep 和 hatch-authd的？
-    - 如何连接？
+    - 为啥被叫做separate host-side agent， 这个agent是指他自己也有llm调用的逻辑和能力妈
+    - 逻辑
+        - loop中需要take action via a connector，
+        -  submits a request to Sentinel 
+            - via Unix domain socket？
+        - Sentinel generates a user-visible purpose for the request
+        - Sentinel valuates the connector policy set by the user
+        - action should be allowed, denied, or to ask the user
+        - approved？
+            - and the following steps?
 6. 

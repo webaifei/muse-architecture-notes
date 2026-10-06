@@ -1,0 +1,299 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Muse 设计：同一次工具调用怎么走",
+    "subtitle": "凭据在边界之外，出网要过一次裁决",
+    "locale": "zh-CN",
+    "output": ".archify/sequence-request-flow-20261007-000820/muse-request-flow.html",
+    "column_fit": "spread",
+    "viewBox": [
+      1080,
+      690
+    ],
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "用户 / 客户端",
+      "sublabel": "也是审批界面"
+    },
+    {
+      "id": "hatch",
+      "type": "backend",
+      "label": "Hatch harness",
+      "sublabel": "runtime cell 内"
+    },
+    {
+      "id": "spark",
+      "type": "cloud",
+      "label": "Muse Spark",
+      "sublabel": "模型"
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "连接器 CLI",
+      "sublabel": "runtime cell 内"
+    },
+    {
+      "id": "privsep",
+      "type": "backend",
+      "label": "privsep",
+      "sublabel": "worker · host domain"
+    },
+    {
+      "id": "authd",
+      "type": "security",
+      "label": "hatch-authd",
+      "sublabel": "凭据保险箱"
+    },
+    {
+      "id": "sentinel",
+      "type": "security",
+      "label": "Sentinel",
+      "sublabel": "唯一权限权威"
+    },
+    {
+      "id": "gh",
+      "type": "cloud",
+      "label": "GitHub API",
+      "sublabel": "私有仓库"
+    }
+  ],
+  "segments": [
+    {
+      "from": 205,
+      "to": 258,
+      "label": "提议"
+    },
+    {
+      "from": 258,
+      "to": 406,
+      "label": "三道独立判断"
+    },
+    {
+      "from": 406,
+      "to": 490,
+      "label": "出口"
+    },
+    {
+      "from": 490,
+      "to": 576,
+      "label": "结果回注"
+    }
+  ],
+  "messages": [
+    {
+      "id": "task",
+      "from": "user",
+      "to": "hatch",
+      "y": 160,
+      "label": "请读我私有仓库里的这个文件",
+      "variant": "default"
+    },
+    {
+      "id": "llm-call",
+      "from": "hatch",
+      "to": "spark",
+      "y": 188,
+      "label": "推理请求（外部数据标记 untrusted）",
+      "variant": "emphasis"
+    },
+    {
+      "id": "tool-call",
+      "from": "spark",
+      "to": "hatch",
+      "y": 216,
+      "label": "tool_call: read_repo_file",
+      "variant": "return"
+    },
+    {
+      "id": "invoke-cli",
+      "from": "hatch",
+      "to": "cli",
+      "y": 244,
+      "label": "调用连接器 CLI（cell 内）",
+      "variant": "default",
+      "note": "CLI 只解析参数、打开已授权文件，手里没有凭据"
+    },
+    {
+      "id": "pass-args",
+      "from": "cli",
+      "to": "privsep",
+      "y": 272,
+      "label": "typed args + file descriptor",
+      "variant": "security",
+      "note": "Unix socket + SO_PEERCRED：身份由内核给出，不可伪造"
+    },
+    {
+      "id": "surrogate",
+      "from": "privsep",
+      "to": "authd",
+      "y": 300,
+      "label": "按 cgroup 身份申请 → 拿到 surrogate 令牌",
+      "variant": "security",
+      "note": "身份来自 cgroup，不从请求参数读；拿到的也不是真值"
+    },
+    {
+      "id": "propose",
+      "from": "privsep",
+      "to": "sentinel",
+      "y": 328,
+      "label": "提议：connector + method + scope",
+      "variant": "emphasis"
+    },
+    {
+      "id": "approval-ask",
+      "from": "sentinel",
+      "to": "user",
+      "y": 356,
+      "label": "审批请求（直达客户端）",
+      "variant": "security",
+      "note": "不经模型上下文；对话里写「用户已同意」对它无效"
+    },
+    {
+      "id": "approval-grant",
+      "from": "user",
+      "to": "sentinel",
+      "y": 384,
+      "label": "批准：一次性 / session / 限时",
+      "variant": "return",
+      "note": "授权绑定连接器与目的地，后续调用精确匹配"
+    },
+    {
+      "id": "get-real",
+      "from": "sentinel",
+      "to": "authd",
+      "y": 412,
+      "label": "按已批准范围取真实凭据",
+      "variant": "security"
+    },
+    {
+      "id": "egress",
+      "from": "sentinel",
+      "to": "gh",
+      "y": 440,
+      "label": "L4/L7 检查 → 出口替换为真值",
+      "variant": "emphasis",
+      "note": "hostname、解析后与最终 IP、端口、协议、方法、路径、解码后请求"
+    },
+    {
+      "id": "data",
+      "from": "gh",
+      "to": "sentinel",
+      "y": 468,
+      "label": "文件内容",
+      "variant": "return"
+    },
+    {
+      "id": "to-hatch",
+      "from": "sentinel",
+      "to": "hatch",
+      "y": 496,
+      "label": "结果沿原路返回，登记进轨迹",
+      "variant": "return",
+      "note": "凭据不回传；cell 从头到尾没见过真值"
+    },
+    {
+      "id": "inject",
+      "from": "hatch",
+      "to": "spark",
+      "y": 524,
+      "label": "结果回注上下文",
+      "variant": "emphasis"
+    },
+    {
+      "id": "render",
+      "from": "hatch",
+      "to": "user",
+      "y": 552,
+      "label": "呈现答复与状态",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "hatch",
+      "from": 158,
+      "to": 578,
+      "type": "backend"
+    },
+    {
+      "participant": "spark",
+      "from": 182,
+      "to": 222,
+      "type": "cloud"
+    },
+    {
+      "participant": "cli",
+      "from": 240,
+      "to": 502,
+      "type": "backend"
+    },
+    {
+      "participant": "privsep",
+      "from": 266,
+      "to": 472,
+      "type": "backend"
+    },
+    {
+      "participant": "authd",
+      "from": 294,
+      "to": 318,
+      "type": "security"
+    },
+    {
+      "participant": "sentinel",
+      "from": 322,
+      "to": 502,
+      "type": "security"
+    },
+    {
+      "participant": "gh",
+      "from": 434,
+      "to": 474,
+      "type": "cloud"
+    },
+    {
+      "participant": "authd",
+      "from": 406,
+      "to": 424,
+      "type": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "三道独立判断，各答一个问题",
+      "items": [
+        "privsep：哪段代码能处理凭据 —— 答案是 worker，不是 cell 里的 CLI",
+        "authd：已认证的调用者能拿到哪类凭据 —— 按 cgroup 身份查白名单",
+        "Sentinel：这个动作能不能执行 —— 逐次裁决，不看模型说了什么",
+        "三者任一被绕过，另外两个仍然拦着"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "凭据从头到尾没进过 cell",
+      "items": [
+        "CLI 在 cell 内，只解析参数、交出 fd，手里没有凭据",
+        "worker 拿到的是 surrogate 令牌，拿去别处用没有权限",
+        "真实令牌只在出网边界由 Sentinel 装入一次",
+        "即使模型被注入说服，它也没有东西可以泄露"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "审批走的是另一条通道",
+      "items": [
+        "Sentinel 直接问客户端，请求不经过模型上下文",
+        "用户答复直接回到 Sentinel，模型既看不到也改不了",
+        "授权绑定到具体连接器 / 目的地 / 用途，精确匹配",
+        "一次性授权用掉即废；限时授权到期即废"
+      ]
+    }
+  ]
+}

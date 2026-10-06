@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "传统 Agent 设计：一次工具调用怎么走（以 Codex 为例）",
+    "subtitle": "沙箱是边界，但凭据在边界之内",
+    "locale": "zh-CN",
+    "output": ".archify/sequence-request-flow-20261007-000820/codex-request-flow.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [
+      1080,
+      620
+    ]
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "用户",
+      "sublabel": "发起任务"
+    },
+    {
+      "id": "loop",
+      "type": "backend",
+      "label": "Agent 循环",
+      "sublabel": "模型调用 + 工具分发"
+    },
+    {
+      "id": "llm",
+      "type": "cloud",
+      "label": "模型 API",
+      "sublabel": "返回 tool_call"
+    },
+    {
+      "id": "cred",
+      "type": "security",
+      "label": "凭据",
+      "sublabel": "环境变量 / 配置文件"
+    },
+    {
+      "id": "sbx",
+      "type": "security",
+      "label": "沙箱",
+      "sublabel": "Seatbelt / Landlock"
+    },
+    {
+      "id": "tool",
+      "type": "backend",
+      "label": "工具进程",
+      "sublabel": "在沙箱内"
+    },
+    {
+      "id": "gh",
+      "type": "cloud",
+      "label": "GitHub API",
+      "sublabel": "私有仓库"
+    }
+  ],
+  "segments": [
+    {
+      "from": 205,
+      "to": 296,
+      "label": "凭据进入进程"
+    },
+    {
+      "from": 296,
+      "to": 404,
+      "label": "沙箱内执行"
+    },
+    {
+      "from": 404,
+      "to": 520,
+      "label": "结果回注"
+    }
+  ],
+  "messages": [
+    {
+      "id": "task",
+      "from": "user",
+      "to": "loop",
+      "y": 160,
+      "label": "请读我私有仓库里的这个文件",
+      "variant": "default"
+    },
+    {
+      "id": "llm-call",
+      "from": "loop",
+      "to": "llm",
+      "y": 190,
+      "label": "请求（带全部工具 schema）",
+      "variant": "emphasis"
+    },
+    {
+      "id": "tool-call",
+      "from": "llm",
+      "to": "loop",
+      "y": 218,
+      "label": "tool_call: fetch_repo_file",
+      "variant": "return"
+    },
+    {
+      "id": "read-cred",
+      "from": "loop",
+      "to": "cred",
+      "y": 248,
+      "label": "从环境变量取 GITHUB_TOKEN",
+      "variant": "security",
+      "note": "凭据和 agent 同处一个进程、一个沙箱边界内"
+    },
+    {
+      "id": "plain-token",
+      "from": "cred",
+      "to": "loop",
+      "y": 276,
+      "label": "明文令牌进入内存",
+      "variant": "return"
+    },
+    {
+      "id": "apply-policy",
+      "from": "loop",
+      "to": "sbx",
+      "y": 306,
+      "label": "套用沙箱策略（文件 / 网络）",
+      "variant": "security"
+    },
+    {
+      "id": "run-sandboxed",
+      "from": "sbx",
+      "to": "tool",
+      "y": 334,
+      "label": "在受限环境里执行",
+      "variant": "default"
+    },
+    {
+      "id": "direct-call",
+      "from": "tool",
+      "to": "gh",
+      "y": 364,
+      "label": "带明文令牌直连，无中介",
+      "variant": "emphasis",
+      "note": "沙箱管的是进程能碰什么，不裁决这一次请求"
+    },
+    {
+      "id": "data",
+      "from": "gh",
+      "to": "tool",
+      "y": 392,
+      "label": "文件内容",
+      "variant": "return"
+    },
+    {
+      "id": "result",
+      "from": "tool",
+      "to": "loop",
+      "y": 422,
+      "label": "结构化结果",
+      "variant": "default"
+    },
+    {
+      "id": "inject",
+      "from": "loop",
+      "to": "llm",
+      "y": 450,
+      "label": "结果回注上下文",
+      "variant": "emphasis"
+    },
+    {
+      "id": "answer",
+      "from": "llm",
+      "to": "loop",
+      "y": 478,
+      "label": "用户语言的答复",
+      "variant": "return"
+    },
+    {
+      "id": "render",
+      "from": "loop",
+      "to": "user",
+      "y": 506,
+      "label": "呈现结果",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "loop",
+      "from": 158,
+      "to": 512,
+      "type": "backend"
+    },
+    {
+      "participant": "llm",
+      "from": 185,
+      "to": 224,
+      "type": "cloud"
+    },
+    {
+      "participant": "cred",
+      "from": 243,
+      "to": 282,
+      "type": "security"
+    },
+    {
+      "participant": "sbx",
+      "from": 301,
+      "to": 340,
+      "type": "security"
+    },
+    {
+      "participant": "tool",
+      "from": 330,
+      "to": 428,
+      "type": "backend"
+    },
+    {
+      "participant": "gh",
+      "from": 359,
+      "to": 398,
+      "type": "cloud"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "边界画在哪里",
+      "items": [
+        "沙箱是一道真实的边界：限制文件写入、限制系统调用、默认禁网",
+        "但凭据在边界之内 —— agent 进程读得到明文令牌",
+        "沙箱是静态策略，不是按请求逐次裁决",
+        "没有独立的一方来决定「这一次请求能不能出网」"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "后果",
+      "items": [
+        "提示注入只要说服模型，它就能让工具把令牌用在你没批准的地方",
+        "工具代码被改写 → 令牌跟着被滥用，因为两者同域",
+        "出网检查与执行共用一个地址空间，绕过检查就直达网络",
+        "审计只能看到「哪个进程发了请求」，看不到「谁批准的」"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "这不是说 Codex 做得差",
+      "items": [
+        "Codex 的沙箱和审批模式是同类产品里相当完整的",
+        "它解决的是「agent 别乱改我的文件」",
+        "没有解决的是「agent 别拿我的凭据做我没批准的事」",
+        "Muse 多出来的那一层，正是为后者设计的"
+      ]
+    }
+  ]
+}

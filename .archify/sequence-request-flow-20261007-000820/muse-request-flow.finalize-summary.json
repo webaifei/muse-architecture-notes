@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/muse-request-flow.json",
+    "sha256": "6eea89837e3701c8a1a3cca32afe103b1da7e5800e8a16e66a2c63d46988de35",
+    "bytes": 7863
+  },
+  "artifact": {
+    "path": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/muse-request-flow.html"
+  },
+  "gates": {
+    "validate": "fail",
+    "deliver": "not-run",
+    "check": "not-run",
+    "browser-check": "not-run"
+  },
+  "failedStage": "validate",
+  "diagnostics": [
+    {
+      "code": "composition/label-canvas-containment",
+      "severity": "error",
+      "message": "[composition/label-canvas-containment] showcase sequence label \"L4/L7 检查，出口替换 surrogate → 真值\" on messages[12] id \"egress\" \"sentinel\" -> \"gh\" extends past the right edge by 15.1px (label rect [679, 476, 256, 18]; viewBox 920x818) — shorten the label, reorder participants, or enlarge meta.viewBox.",
+      "subject": {
+        "diagramType": "sequence",
+        "collection": "messages",
+        "index": 12,
+        "id": "egress",
+        "from": "sentinel",
+        "to": "gh"
+      },
+      "evidence": {
+        "label": "L4/L7 检查，出口替换 surrogate → 真值",
+        "labelRect": {
+          "x": 678.9,
+          "y": 476,
+          "width": 256.2,
+          "height": 18
+        },
+        "viewBox": [
+          920,
+          818
+        ],
+        "overflowPx": {
+          "right": 15.1
+        },
+        "tolerancePx": 0.5
+      },
+      "supportedFixes": [
+        "shorten the label, reorder participants, or enlarge meta.viewBox"
+      ]
+    },
+    {
+      "code": "layout/constraint",
+      "severity": "error",
+      "message": "Participants exceed viewBox width — set meta.viewBox[0] to at least 944 or remove a participant.",
+      "subject": {
+        "diagramType": "sequence"
+      }
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 2,
+    "shown": 2,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/muse-request-flow.finalize.json",
+    "summaryReceipt": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/muse-request-flow.finalize-summary.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-06T11:02:21.705Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 232,
+  "nextAction": {
+    "action": "edit-in-place",
+    "candidate": "/Users/test/projects/muse-architecture-notes/.archify/sequence-request-flow-20261007-000820/muse-request-flow.json",
+    "constraint": "Preserve unaffected semantics and geometry; do not replace the whole candidate.",
+    "then": "finalize-once"
+  }
+}
