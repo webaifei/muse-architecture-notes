@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "8303c92c-5262-4568-9412-b74706d64583",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/test/projects/muse-architecture-notes/.archify/workflow-arch-plus-flow-20261007-002251/arch-plus-flow.json",
+  "output": "/Users/test/projects/muse-architecture-notes/.archify/workflow-arch-plus-flow-20261007-002251/arch-plus-flow.html",
+  "specification": {
+    "sha256": "0786508aa8f012fb28716e7156620b6533356b2cccfb4bd4268c4cc5abd7bcec",
+    "bytes": 8182
+  },
+  "artifact": {
+    "sha256": "dc8d782609b86c73bc61782cc35ba31f94bc2b0b15f5b3b74e44e2342e150f67",
+    "bytes": 774446
+  }
+}

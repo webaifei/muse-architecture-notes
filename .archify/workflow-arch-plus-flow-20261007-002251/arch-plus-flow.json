@@ -1,0 +1,365 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "一次工具调用：传统 Agent vs Muse",
+    "subtitle": "泳道是信任域（架构），列是阶段（流程）",
+    "locale": "zh-CN",
+    "output": ".archify/workflow-arch-plus-flow-20261007-002251/arch-plus-flow.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "legacy",
+      "label": "传统设计（对照）：一个域，凭据在进程内",
+      "variant": "exception"
+    },
+    {
+      "id": "user",
+      "label": "用户 / 客户端"
+    },
+    {
+      "id": "cell",
+      "label": "Runtime cell · 不可信域（systemd-nspawn）"
+    },
+    {
+      "id": "host",
+      "label": "Host domain · 控制面（agent 够不着）"
+    },
+    {
+      "id": "ext",
+      "label": "外部世界"
+    }
+  ],
+  "phases": [
+    {
+      "id": "p1",
+      "label": "① 任务进入",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "p2",
+      "label": "② 推理与提议",
+      "fromCol": 1,
+      "toCol": 2
+    },
+    {
+      "id": "p3",
+      "label": "③ 三道独立判断",
+      "fromCol": 3,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "p4",
+      "label": "④ 出口",
+      "fromCol": 4,
+      "toCol": 4
+    },
+    {
+      "id": "p5",
+      "label": "⑤ 回注",
+      "fromCol": 5,
+      "toCol": 5
+    }
+  ],
+  "groups": [
+    {
+      "id": "g_surrogate",
+      "label": "surrogate 令牌",
+      "lane": "host",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "dashed"
+    },
+    {
+      "id": "g_approval",
+      "label": "审批通道（不经模型）",
+      "lane": "user",
+      "fromCol": 3,
+      "toCol": 3,
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "user",
+    "hatch",
+    "cli",
+    "privsep",
+    "sentinel",
+    "github",
+    "final",
+    "render"
+  ],
+  "nodes": [
+    {
+      "id": "l_proc",
+      "lane": "legacy",
+      "col": 0,
+      "type": "backend",
+      "label": "Agent 进程",
+      "sublabel": "推断循环",
+      "tag": "凭据 + 检查同进程",
+      "width": 150
+    },
+    {
+      "id": "l_tool",
+      "lane": "legacy",
+      "col": 2,
+      "type": "backend",
+      "label": "工具",
+      "sublabel": "直接执行",
+      "width": 110
+    },
+    {
+      "id": "l_ext",
+      "lane": "legacy",
+      "col": 4,
+      "type": "cloud",
+      "label": "外部服务",
+      "sublabel": "带明文凭据直连",
+      "width": 150
+    },
+    {
+      "id": "user",
+      "lane": "user",
+      "col": 0,
+      "type": "external",
+      "label": "发起任务",
+      "sublabel": "读私有仓库文件",
+      "width": 130
+    },
+    {
+      "id": "approve",
+      "lane": "user",
+      "col": 3,
+      "type": "external",
+      "label": "审批界面",
+      "sublabel": "一次性 / 限时",
+      "width": 130
+    },
+    {
+      "id": "render",
+      "lane": "user",
+      "col": 5,
+      "type": "external",
+      "label": "呈现结果",
+      "sublabel": "答复 + 状态",
+      "width": 130
+    },
+    {
+      "id": "hatch",
+      "lane": "cell",
+      "col": 0,
+      "type": "backend",
+      "label": "Hatch harness",
+      "sublabel": "agent 本体",
+      "width": 130
+    },
+    {
+      "id": "spark",
+      "lane": "cell",
+      "col": 1,
+      "type": "cloud",
+      "label": "Muse Spark",
+      "sublabel": "返回 tool_call",
+      "width": 130
+    },
+    {
+      "id": "cli",
+      "lane": "cell",
+      "col": 2,
+      "type": "backend",
+      "label": "连接器 CLI",
+      "sublabel": "解析参数、交出 fd",
+      "tag": "手里没有凭据",
+      "width": 140
+    },
+    {
+      "id": "final",
+      "lane": "cell",
+      "col": 5,
+      "type": "backend",
+      "label": "结果回注",
+      "sublabel": "登记进轨迹",
+      "width": 130
+    },
+    {
+      "id": "privsep",
+      "lane": "host",
+      "col": 2,
+      "type": "backend",
+      "label": "privsep",
+      "sublabel": "worker",
+      "tag": "cgroup 身份",
+      "width": 130,
+      "yOffset": 0
+    },
+    {
+      "id": "authd",
+      "lane": "host",
+      "col": 2,
+      "type": "security",
+      "label": "hatch-authd",
+      "sublabel": "凭据保险箱",
+      "width": 130,
+      "yOffset": 74
+    },
+    {
+      "id": "sentinel",
+      "lane": "host",
+      "col": 3,
+      "type": "security",
+      "label": "Sentinel",
+      "sublabel": "allow / deny / ask",
+      "tag": "唯一权限权威 + 出网 L4/L7",
+      "width": 140,
+      "yOffset": 0
+    },
+    {
+      "id": "github",
+      "lane": "ext",
+      "col": 4,
+      "type": "cloud",
+      "label": "GitHub API",
+      "sublabel": "私有仓库",
+      "width": 130
+    }
+  ],
+  "edges": [
+    {
+      "id": "user-hatch",
+      "from": "user",
+      "to": "hatch",
+      "label": "提任务",
+      "variant": "default"
+    },
+    {
+      "id": "hatch-spark",
+      "from": "hatch",
+      "to": "spark",
+      "label": "推理请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "hatch-cli",
+      "from": "hatch",
+      "to": "cli",
+      "label": "tool_call 后调用",
+      "variant": "default"
+    },
+    {
+      "id": "cli-privsep",
+      "from": "cli",
+      "to": "privsep",
+      "label": "typed args + fd",
+      "variant": "security"
+    },
+    {
+      "id": "privsep-authd",
+      "from": "privsep",
+      "to": "authd",
+      "label": "按 cgroup 申请 → surrogate",
+      "variant": "security"
+    },
+    {
+      "id": "privsep-sentinel",
+      "from": "privsep",
+      "to": "sentinel",
+      "label": "提议动作",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sentinel-approve",
+      "from": "sentinel",
+      "to": "approve",
+      "label": "审批请求",
+      "variant": "security"
+    },
+    {
+      "id": "approve-sentinel",
+      "from": "approve",
+      "to": "sentinel",
+      "label": "批准",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "authd-sentinel",
+      "from": "authd",
+      "to": "sentinel",
+      "label": "真实凭据",
+      "variant": "security"
+    },
+    {
+      "id": "sentinel-github",
+      "from": "sentinel",
+      "to": "github",
+      "label": "L4/L7 检查后出网",
+      "variant": "emphasis"
+    },
+    {
+      "id": "github-final",
+      "from": "github",
+      "to": "final",
+      "label": "文件内容",
+      "variant": "dashed",
+      "role": "return",
+      "route": "bottom-channel"
+    },
+    {
+      "id": "final-render",
+      "from": "final",
+      "to": "render",
+      "label": "答复",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "legacy-tool",
+      "from": "l_proc",
+      "to": "l_tool",
+      "variant": "dashed"
+    },
+    {
+      "id": "legacy-ext",
+      "from": "l_tool",
+      "to": "l_ext",
+      "label": "无中介",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "泳道就是架构",
+      "items": [
+        "最上面一条对照泳道：传统设计，凭据和检查都在进程内",
+        "下面四条是 Muse：用户 / Runtime cell / Host domain / 外部世界",
+        "cell 是预期会被攻破的不可信域，host 是它够不着的控制面",
+        "两条域之间只有一条通道：Unix socket + SO_PEERCRED"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "列就是流程，6 个阶段装下 15 步",
+      "items": [
+        "① 任务进入 ② 推理与提议 ③ 三道独立判断 ④ 出口 ⑤ 回注",
+        "阶段内部的多步被合并成一列内的节点与边",
+        "对照泳道只走 3 列就到外部服务，Muse 要走完 5 列",
+        "流程变长不是缺点 —— 每一列都是一道别人要过的关"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "三个技术细节留在图上",
+      "items": [
+        "CLI → privsep：typed args + file descriptor，不是路径字符串",
+        "privsep → authd：按 cgroup 身份申请，改请求参数没有用",
+        "Sentinel → 审批界面：直达客户端，不经过模型上下文",
+        "出口检查：L4/L7 看 hostname、解析后与最终 IP、端口、协议、方法、路径"
+      ]
+    }
+  ]
+}

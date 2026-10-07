@@ -187,7 +187,7 @@ article hr { border: 0; border-top: 1px solid #d3d3d3; margin: 2.4em 0 0 .8em; }
   <header id="header">
     <h1><a href="#top">Muse 架构剖析</a></h1>
     <div id="header-description">从零实现一遍 Meta Muse 的安全架构 · 共 ${chapters.length} 篇</div>
-    <nav><a href="#toc">章节列表</a> · <a href="muse-safety-blog-zh.html">官方博客中英对照</a> · <a href="muse-vs-traditional.html">架构对比</a> · <a href="compare-codex-request.html">Codex 一次请求</a> · <a href="compare-muse-request.html">Muse 一次请求</a> · <a href="https://github.com/webaifei/muse-architecture-notes">源码仓库</a></nav>
+    <nav><a href="#toc">章节列表</a> · <a href="overview-arch-and-flow.html">一张图看懂</a> · <a href="compare-codex-request.html">Codex 一次请求</a> · <a href="compare-muse-request.html">Muse 一次请求</a> · <a href="muse-vs-traditional.html">架构对比</a> · <a href="muse-safety-blog-zh.html">官方博客中英对照</a> · <a href="https://github.com/webaifei/muse-architecture-notes">源码仓库</a></nav>
   </header>
 
   <div class="intro"><p>${intro}</p></div>
