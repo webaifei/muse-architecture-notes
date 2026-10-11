@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "传统 agent：同一条链路，但只有一层沙盒",
+    "subtitle": "八步走完，没有任何一步在 agent 之外；提示注入只要能改 tool 代码，就直接拿到真凭证",
+    "locale": "zh-CN",
+    "output": ".archify/seq-traditional-20261011/trad-seq.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "用户 / 客户端"
+    },
+    {
+      "id": "llm",
+      "type": "cloud",
+      "label": "LLM"
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "connector CLI",
+      "sublabel": "与 harness 同环境"
+    },
+    {
+      "id": "tok",
+      "type": "security",
+      "label": "凭证",
+      "sublabel": "环境变量"
+    },
+    {
+      "id": "ext",
+      "type": "external",
+      "label": "第三方服务"
+    }
+  ],
+  "segments": [
+    {
+      "from": 155,
+      "to": 240,
+      "label": "① 用户 → LLM → 直接执行工具"
+    },
+    {
+      "from": 248,
+      "to": 300,
+      "label": "② 凭证就在同一个环境里"
+    },
+    {
+      "from": 308,
+      "to": 390,
+      "label": "③ 出网无代理"
+    },
+    {
+      "from": 398,
+      "to": 470,
+      "label": "④ 结果原路回到模型"
+    }
+  ],
+  "messages": [
+    {
+      "id": "m170",
+      "from": "user",
+      "to": "llm",
+      "y": 170,
+      "label": "查看 Gmail 邮箱",
+      "variant": "default"
+    },
+    {
+      "id": "m210",
+      "from": "llm",
+      "to": "cli",
+      "y": 210,
+      "label": "工具调用（gmail）",
+      "variant": "default",
+      "note": "模型输出的 tool_use 直接被执行，中间没有第三方裁决"
+    },
+    {
+      "id": "m250",
+      "from": "cli",
+      "to": "tok",
+      "y": 250,
+      "label": "读环境变量",
+      "variant": "security",
+      "note": "connector CLI 和 harness 代码在同一个环境里"
+    },
+    {
+      "id": "m290",
+      "from": "tok",
+      "to": "cli",
+      "y": 290,
+      "label": "拿到真 token",
+      "variant": "return",
+      "note": "没有代理、没有 surrogate——拿到就是真的"
+    },
+    {
+      "id": "m330",
+      "from": "cli",
+      "to": "ext",
+      "y": 330,
+      "label": "带真 token 发请求",
+      "variant": "security",
+      "note": "出网没有代理，没有 L4/L7 校验"
+    },
+    {
+      "id": "m370",
+      "from": "ext",
+      "to": "cli",
+      "y": 370,
+      "label": "结果",
+      "variant": "return"
+    },
+    {
+      "id": "m410",
+      "from": "cli",
+      "to": "llm",
+      "y": 410,
+      "label": "工具结果",
+      "variant": "default"
+    },
+    {
+      "id": "m450",
+      "from": "llm",
+      "to": "user",
+      "y": 450,
+      "label": "回复",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "八步里，没有一步在 agent 之外",
+      "items": [
+        "① 用户提问 → ② LLM 产出 tool_use → ③ connector CLI 执行",
+        "connector CLI 和 agent harness 跑在同一个环境、同一个沙盒里",
+        "凭证由 CLI 直接读环境变量拿到，没有 authd、没有 surrogate、没有 Sentinel 换手",
+        "出网没有代理，没有 L4/L7 校验，也没有 SSRF 拦截"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "风险落点很集中",
+      "items": [
+        "提示注入只要能改掉 tool 代码（或诱导模型调用等价命令），就能读到那个环境变量",
+        "沙盒是唯一一层边界；它一旦被穿透，凭证就在里面",
+        "模型层没有独立的检测环节，请求和响应都不经过第三方模型"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "和 Muse 逐项对照",
+      "items": [
+        "工具执行：这里直接执行 ┃ Muse 要过 Sentinel 裁决（能力 + 策略）",
+        "凭证：这里 CLI 直接读环境变量 ┃ Muse 只拿到 authd 发的 surrogate，真 token 在出网那刻才换上",
+        "代码位置：这里 CLI 和 harness 同环境 ┃ Muse 的 connector 逻辑在 cell 外的 privsep worker",
+        "出网：这里无代理 ┃ Muse 全部经 Sentinel，L4/L7 校验 + SSRF 拦截"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "一句话",
+      "items": [
+        "传统做法是在沙盒里做隔离；Muse 是把凭证搬出沙盒，再在中间加四道关",
+        "所以差别不是沙盒厚不厚，是**被攻破之后还剩下什么结构约束**"
+      ]
+    }
+  ]
+}

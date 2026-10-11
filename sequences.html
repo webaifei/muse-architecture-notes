@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>同一条链路，两种信任结构 · Muse vs 传统 agent</title>
+<style>
+  :root {
+    --bg: #f7f7f8; --card: #fff; --line: #e4e4e7;
+    --ink: #18181b; --muted: #71717a; --accent: #2563eb; --tag: #f4f4f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111113; --card: #1b1b1f; --line: #2c2c31;
+      --ink: #ededf0; --muted: #9a9aa2; --accent: #7aa2ff; --tag: #26262b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1680px; margin: 0 auto; padding: 40px 24px 64px; }
+  h1 { font-size: 24px; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .sub a { color: var(--accent); text-decoration: none; }
+  .sub a:hover { text-decoration: underline; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  @media (min-width: 1280px) { .grid { grid-template-columns: 1fr 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .panel-head { padding: 14px 18px 12px; border-bottom: 1px solid var(--line); }
+  .panel-head h2 { font-size: 15px; margin: 0 0 4px; }
+  .panel-head p { margin: 0; font-size: 13px; color: var(--muted); }
+  .bad { color: #d9455f; font-weight: 600; }
+  .good { color: #17936a; font-weight: 600; }
+  iframe { width: 100%; height: 1180px; border: 0; display: block; background: var(--bg); }
+  .links { padding: 10px 18px 14px; font-size: 13px; }
+  .links a { color: var(--accent); text-decoration: none; margin-right: 14px; }
+  .links a:hover { text-decoration: underline; }
+  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>同一条链路，两种信任结构</h1>
+<p class="sub">
+  两边都是「用户说：查看 Gmail 邮箱」。左边是常见做法，右边是 Muse。
+  差别不在模型，在<b>每一步之间有没有第三方裁决</b>。基于官方安全博客：
+  <a href="docs/muse-安全博客-中英对照.md">中英对照</a> ·
+  <a href="docs/muse-安全博客-英文原文.md">英文原文</a>
+</p>
+
+<div class="grid">
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2 class="bad">传统 agent · 一层沙盒</h2>
+      <p>八步走完，<b>没有任何一步在 agent 之外</b>。connector CLI 和 harness 同环境，凭证由 CLI 直接读环境变量。</p>
+    </div>
+    <iframe src="diagrams/traditional-agent-sequence.html" title="传统 agent 时序图" loading="lazy"></iframe>
+    <div class="links">
+      <a href="diagrams/traditional-agent-sequence.html">打开大图</a>
+      <a href="diagrams/traditional-agent-sequence.png">PNG</a>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2 class="good">Muse · 四道关都在 cell 之外</h2>
+      <p>十四步，<b>每一步的安全动作都发生在 runtime cell 之外</b>。agent 全程只拿到 surrogate，真凭证在出网那一刻才换上。</p>
+    </div>
+    <iframe src="diagrams/muse-security-sequence.html" title="Muse 时序图" loading="lazy"></iframe>
+    <div class="links">
+      <a href="diagrams/muse-security-sequence.html">打开大图</a>
+      <a href="diagrams/muse-security-sequence.png">PNG</a>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  两个工具执行、凭证、出网三处逐项对照见右侧图的卡片，以及
+  <a href="diagrams/muse-trust-boundaries.html">信任结构对比图</a>。
+</footer>
+
+</div>
+</body>
+</html>

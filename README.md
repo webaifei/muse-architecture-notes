@@ -14,12 +14,15 @@ Meta 的 Muse 是一个个人 AI agent。它跑在一个用户专属的云 VM �
 
 这个仓库把它拆成八步，每步一个可运行的 demo。
 
-## 两张图
+## 图
+
+**并排对比（推荐先看这个）：[sequences.html](sequences.html)** —— 同一条链路，左传统、右 Muse。
 
 | 图 | 看什么 |
 |---|---|
-| [调用链时序图](diagrams/muse-security-sequence.html) · [PNG](diagrams/muse-security-sequence.png) | 一次「查看 Gmail」要过的五道关：14 步里每一步的安全动作都在 runtime cell 之外 |
-| [信任结构对比图](diagrams/muse-trust-boundaries.html) · [PNG](diagrams/muse-trust-boundaries.png) | **合并版**：左边传统做法（凭证和 harness 在同一个盒子里），右边 Muse，边上压着 ①–⑬ 的步骤编号，卡片里有完整 13 步 |
+| [调用链时序图 · Muse](diagrams/muse-security-sequence.html) · [PNG](diagrams/muse-security-sequence.png) | 一次「查看 Gmail」要过的五道关：14 步里每一步的安全动作都在 runtime cell 之外 |
+| [调用链时序图 · 传统](diagrams/traditional-agent-sequence.html) · [PNG](diagrams/traditional-agent-sequence.png) | 同样八步，但没有任何一步在 agent 之外；凭证由 CLI 直接读环境变量 |
+| [信任结构对比图](diagrams/muse-trust-boundaries.html) · [PNG](diagrams/muse-trust-boundaries.png) | 左边传统做法（凭证和 harness 在同一个盒子里），右边 Muse，边上压着 ①–⑬ 的步骤编号 |
 
 > 两图都依据官方安全博客：[中英对照](docs/muse-安全博客-中英对照.md) · [英文原文](docs/muse-安全博客-英文原文.md)
 
