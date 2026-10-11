@@ -1,0 +1,426 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Muse / Hatch 泳道：一次任务，每个模块各在哪条道",
+    "subtitle": "推理走代理 + 送检，动作走 Sentinel 闸门；agent 只能提议，授权和凭证都在它够不到的地方",
+    "locale": "zh-CN",
+    "output": ".archify/workflow-muse-20261011-165000/muse-swimlane.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "client",
+      "label": "用户与客户端"
+    },
+    {
+      "id": "cell",
+      "label": "runtime cell（systemd-nspawn）· Hatch harness + 工具"
+    },
+    {
+      "id": "safe",
+      "label": "宿主侧 · 推理代理 / hatch-safety / Sentinel"
+    },
+    {
+      "id": "cred",
+      "label": "宿主侧 · authd + privsep（凭证与执行）"
+    },
+    {
+      "id": "ext",
+      "label": "外部系统"
+    }
+  ],
+  "groups": [
+    {
+      "id": "g-hitl",
+      "label": "人在回路：执行暂停",
+      "lane": "client",
+      "fromCol": 4,
+      "toCol": 4,
+      "variant": "security"
+    },
+    {
+      "id": "g-loop",
+      "label": "组装与决策",
+      "lane": "cell",
+      "fromCol": 1,
+      "toCol": 2,
+      "variant": "emphasis"
+    },
+    {
+      "id": "g-tool",
+      "label": "工具 / 浏览器（同在 cell）",
+      "lane": "cell",
+      "fromCol": 3,
+      "toCol": 3,
+      "variant": "dashed"
+    },
+    {
+      "id": "g-infer",
+      "label": "推理链：代理 + 独立送检",
+      "lane": "safe",
+      "fromCol": 1,
+      "toCol": 2,
+      "variant": "emphasis"
+    },
+    {
+      "id": "g-gate",
+      "label": "唯一权限源：判决 + 权威授权状态",
+      "lane": "safe",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "security"
+    },
+    {
+      "id": "g-cred",
+      "label": "cell 外执行域",
+      "lane": "cred",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "request",
+    "assemble",
+    "proxy",
+    "safety",
+    "decide",
+    "toolcall",
+    "sentinel",
+    "authorize",
+    "privsep",
+    "writeback",
+    "result"
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "request"
+    ],
+    "allowedTerminals": [
+      "result",
+      "model",
+      "service"
+    ],
+    "requiredPaths": [
+      {
+        "from": "toolcall",
+        "to": "privsep"
+      },
+      {
+        "from": "sentinel",
+        "to": "service"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "request",
+      "lane": "client",
+      "col": 0,
+      "type": "external",
+      "label": "用户请求",
+      "sublabel": "prompt · 文件",
+      "width": 140
+    },
+    {
+      "id": "approval",
+      "lane": "client",
+      "col": 4,
+      "type": "security",
+      "label": "审批弹窗",
+      "sublabel": "直达客户端 UI",
+      "width": 150
+    },
+    {
+      "id": "result",
+      "lane": "client",
+      "col": 5,
+      "type": "frontend",
+      "label": "结果回显",
+      "sublabel": "对话与产物",
+      "width": 140
+    },
+    {
+      "id": "assemble",
+      "lane": "cell",
+      "col": 1,
+      "type": "backend",
+      "label": "组装上下文",
+      "sublabel": "提示 + 记忆 + 工具表",
+      "width": 160
+    },
+    {
+      "id": "decide",
+      "lane": "cell",
+      "col": 2,
+      "type": "backend",
+      "label": "模型决策",
+      "sublabel": "选工具 / 下一步",
+      "width": 150
+    },
+    {
+      "id": "toolcall",
+      "lane": "cell",
+      "col": 3,
+      "type": "backend",
+      "label": "调用工具",
+      "sublabel": "连接器 CLI / 浏览器",
+      "width": 160
+    },
+    {
+      "id": "writeback",
+      "lane": "cell",
+      "col": 5,
+      "type": "backend",
+      "label": "回填结果",
+      "sublabel": "进入下一轮 loop",
+      "width": 155
+    },
+    {
+      "id": "proxy",
+      "lane": "safe",
+      "col": 1,
+      "type": "cloud",
+      "label": "推理代理",
+      "sublabel": "受约束出口",
+      "width": 135
+    },
+    {
+      "id": "safety",
+      "lane": "safe",
+      "col": 2,
+      "type": "security",
+      "label": "hatch-safety",
+      "sublabel": "分类器 + 安全模型",
+      "width": 155
+    },
+    {
+      "id": "sentinel",
+      "lane": "safe",
+      "col": 3,
+      "type": "security",
+      "label": "Sentinel 判决",
+      "sublabel": "允许 / 拒绝 / 询问",
+      "width": 160
+    },
+    {
+      "id": "authorize",
+      "lane": "safe",
+      "col": 4,
+      "type": "security",
+      "label": "授权状态",
+      "sublabel": "绑定范围与时效",
+      "width": 150
+    },
+    {
+      "id": "authd",
+      "lane": "cred",
+      "col": 4,
+      "type": "security",
+      "label": "hatch-authd",
+      "sublabel": "发放代理令牌",
+      "width": 140
+    },
+    {
+      "id": "privsep",
+      "lane": "cred",
+      "col": 5,
+      "type": "security",
+      "label": "privsep worker",
+      "sublabel": "按 cgroup 白名单执行",
+      "width": 165
+    },
+    {
+      "id": "model",
+      "lane": "ext",
+      "col": 1,
+      "type": "cloud",
+      "label": "Meta 模型推理",
+      "sublabel": "Muse Spark 1.3",
+      "width": 150
+    },
+    {
+      "id": "service",
+      "lane": "ext",
+      "col": 5,
+      "type": "external",
+      "label": "第三方 API / Web",
+      "sublabel": "邮件 · 日历 · 网页",
+      "width": 160
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-request",
+      "from": "request",
+      "to": "assemble",
+      "label": "任务 + 上下文",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-infer",
+      "from": "assemble",
+      "to": "proxy",
+      "label": "模型请求",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-model",
+      "from": "proxy",
+      "to": "model",
+      "label": "受限通路",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-check",
+      "from": "proxy",
+      "to": "safety",
+      "label": "送检",
+      "variant": "security",
+      "role": "main"
+    },
+    {
+      "id": "e-pass",
+      "from": "safety",
+      "to": "decide",
+      "label": "放行 / 标注",
+      "variant": "security",
+      "role": "main"
+    },
+    {
+      "id": "e-decide",
+      "from": "decide",
+      "to": "toolcall",
+      "label": "决定调工具",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-submit",
+      "from": "toolcall",
+      "to": "sentinel",
+      "label": "提交动作请求",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-ask",
+      "from": "sentinel",
+      "to": "approval",
+      "label": "判定 ask",
+      "variant": "security",
+      "role": "branch",
+      "channelX": 760,
+      "labelAt": [
+        735,
+        300
+      ]
+    },
+    {
+      "id": "e-allow",
+      "from": "sentinel",
+      "to": "authorize",
+      "label": "允许 / 拒绝",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-answer",
+      "from": "approval",
+      "to": "authorize",
+      "label": "用户答复",
+      "variant": "security",
+      "role": "branch"
+    },
+    {
+      "id": "e-cred",
+      "from": "sentinel",
+      "to": "authd",
+      "label": "取真实凭证",
+      "variant": "security",
+      "role": "branch"
+    },
+    {
+      "id": "e-grant",
+      "from": "authorize",
+      "to": "privsep",
+      "label": "授权执行",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-surrogate",
+      "from": "authd",
+      "to": "privsep",
+      "label": "代理令牌",
+      "variant": "security",
+      "role": "branch"
+    },
+    {
+      "id": "e-execute",
+      "from": "privsep",
+      "to": "service",
+      "label": "注入凭证执行",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "e-result",
+      "from": "privsep",
+      "to": "writeback",
+      "label": "业务结果回填",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "e-reply",
+      "from": "writeback",
+      "to": "result",
+      "label": "最终回复",
+      "variant": "emphasis",
+      "role": "main"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这张泳道图的中心逻辑",
+      "items": [
+        "Muse 只能「提议」，只有 Sentinel 能「授权」——动作链上没有任何一步能绕过它",
+        "两条链分开管：推理内容由 hatch-safety 独立送检（请求与响应都检查），工具动作与网络出口由 Sentinel 管",
+        "真凭证不进 agent 上下文：authd 只发代理令牌，真实凭证由 Sentinel 在网络边界替换"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "三条链路，各自独立",
+      "items": [
+        "推理链：harness → 推理代理 → 模型；代理把请求与响应都旁路给 hatch-safety",
+        "动作链：harness → 工具 → Sentinel 判决 → 授权状态 → privsep → 外部服务",
+        "凭证链：Sentinel 决定能拿什么 → authd 供给 → privsep 按 cgroup 白名单执行"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "人在回路",
+      "items": [
+        "判定 ask 时执行暂停，弹窗直接来自客户端 UI，不经过与 Muse 的对话",
+        "批准是 capability：绑定连接器/目的地/用例，支持一次性、会话级、任务级、限时、永久",
+        "答复写回 Sentinel 的权威授权状态后才放行，后续调用必须精确匹配已授权范围"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "运行位置与边界",
+      "items": [
+        "第 2 泳道整条都在 systemd-nspawn runtime cell 内：harness、工具、浏览器；cell root 映射为非特权宿主用户",
+        "第 3、4 泳道在 cell 之外的宿主侧：推理代理、hatch-safety、Sentinel、authd、privsep，agent 无法覆盖",
+        "deny 直接拒绝；读过用户数据的「污点」进程失去自动放行；CDP broker 也在 cell 外，子智能体只看无障碍树"
+      ]
+    }
+  ]
+}

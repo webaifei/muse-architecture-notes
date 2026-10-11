@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "4b53232d-63b5-4231-ae57-4e37d6fbbb0c",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/test/projects/muse-architecture-notes/.archify/workflow-muse-20261011-165000/candidate.json",
+  "output": "/Users/test/projects/muse-architecture-notes/.archify/workflow-muse-20261011-165000/muse-swimlane.html",
+  "specification": {
+    "sha256": "6bea89ceba684a6a0f21420f3ed325a6e3164150cb910d63f5727da1c3cd51bd",
+    "bytes": 10031
+  },
+  "artifact": {
+    "sha256": "70a544524b9af014ecdbb3ba4c4eb7709bcd45465079e9e279ef76aa7bed3b38",
+    "bytes": 777903
+  }
+}

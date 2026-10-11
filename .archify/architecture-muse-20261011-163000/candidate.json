@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Muse 架构：每个模块跑在哪，消息怎么走",
+    "subtitle": "一台专属 VM，两个安全域；agent 在沙盒里，权限和凭证在沙盒外",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-muse-20261011-163000/muse-architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "clients", "type": "external", "label": "Muse 客户端", "sublabel": "iOS · Android · Web", "pos": [10, 335], "size": [140, 90] },
+
+    { "id": "workspace", "type": "database", "label": "工作区文件系统", "sublabel": "你的文件与记忆", "pos": [235, 130], "size": [200, 62] },
+    { "id": "harness", "type": "backend", "label": "Hatch 守护进程", "sublabel": "核心 agentic harness", "pos": [230, 330], "size": [210, 100] },
+    { "id": "connector-cli", "type": "backend", "label": "连接器薄 CLI", "sublabel": "解析参数 · 传 fd", "pos": [230, 600], "size": [170, 70] },
+    { "id": "browser", "type": "frontend", "label": "Chromium 浏览器", "sublabel": "浏览器子智能体", "pos": [430, 600], "size": [180, 70] },
+
+    { "id": "inference-proxy", "type": "cloud", "label": "推理代理", "sublabel": "受约束出口通路", "pos": [700, 130], "size": [180, 80] },
+    { "id": "hatch-safety", "type": "security", "label": "hatch-safety", "sublabel": "安全模型 + 分类器", "pos": [700, 280], "size": [180, 80] },
+    { "id": "sentinel", "type": "security", "label": "Sentinel", "sublabel": "唯一权限裁决者", "pos": [700, 460], "size": [180, 100], "tag": "允许/拒绝/询问" },
+    { "id": "privsep", "type": "security", "label": "privsep worker", "sublabel": "连接器业务逻辑", "pos": [700, 660], "size": [180, 80] },
+    { "id": "authd", "type": "security", "label": "hatch-authd", "sublabel": "凭证库 · 代理令牌", "pos": [700, 850], "size": [180, 80] },
+
+    { "id": "model-infra", "type": "cloud", "label": "Meta 模型推理", "sublabel": "Muse Spark 1.3", "pos": [970, 130], "size": [160, 80] },
+    { "id": "external-services", "type": "external", "label": "外部服务", "sublabel": "第三方 API · Web", "pos": [970, 470], "size": [160, 110] }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "用户专属 VM（每人一台 · 你的数据都在这里）",
+      "wraps": ["workspace", "harness", "connector-cli", "browser", "inference-proxy", "hatch-safety", "sentinel", "privsep", "authd"]
+    },
+    {
+      "kind": "security-group",
+      "label": "runtime cell：systemd-nspawn 容器（处理不可信数据）",
+      "wraps": ["workspace", "harness", "connector-cli", "browser"]
+    },
+    {
+      "kind": "security-group",
+      "label": "宿主侧服务：cell 之外（agent 不可覆盖）",
+      "wraps": ["inference-proxy", "hatch-safety", "sentinel", "privsep", "authd"]
+    }
+  ],
+  "connections": [
+    { "id": "clients-to-harness", "from": "clients", "to": "harness", "label": "安全传输层", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "harness-to-workspace", "from": "harness", "to": "workspace", "label": "读写工作区", "fromSide": "top", "toSide": "bottom" },
+    { "id": "harness-to-inference", "from": "harness", "to": "inference-proxy", "label": "模型请求", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "proxy-to-safety", "from": "inference-proxy", "to": "hatch-safety", "label": "送检", "variant": "security", "fromSide": "bottom", "toSide": "top" },
+    { "id": "proxy-to-model", "from": "inference-proxy", "to": "model-infra", "label": "受限通路", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "harness-to-connector", "from": "harness", "to": "connector-cli", "label": "调用工具", "fromSide": "bottom", "toSide": "top" },
+    { "id": "harness-to-browser", "from": "harness", "to": "browser", "label": "驱动浏览器", "fromSide": "bottom", "toSide": "top" },
+    { "id": "connector-to-privsep", "from": "connector-cli", "to": "privsep", "label": "Unix socket 传参", "variant": "security", "fromSide": "bottom", "toSide": "left" },
+    { "id": "privsep-to-sentinel", "from": "privsep", "to": "sentinel", "label": "请求授权", "variant": "security", "fromSide": "top", "toSide": "bottom" },
+    { "id": "sentinel-to-authd", "from": "sentinel", "to": "authd", "label": "取真实凭证", "variant": "security", "fromSide": "right", "toSide": "right" },
+    { "id": "authd-to-privsep", "from": "authd", "to": "privsep", "label": "代理令牌", "variant": "security", "fromSide": "top", "toSide": "bottom" },
+    { "id": "sentinel-to-external", "from": "sentinel", "to": "external-services", "label": "放行出口", "variant": "security", "fromSide": "right", "toSide": "left" },
+    { "id": "browser-to-sentinel", "from": "browser", "to": "sentinel", "label": "出口请求", "variant": "security", "fromSide": "right", "toSide": "left" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "runtime cell：泡在 systemd-nspawn 里的沙盒",
+      "items": [
+        "Hatch 守护进程（核心 harness）、你的文件系统、工具二进制、连接器薄 CLI、Chromium 全都在 cell 内",
+        "cell 内 root 映射为宿主机非特权用户，cell root 不等于 host root",
+        "独立 rootfs（完整 debian 镜像）、独立 veth、seccomp 过滤（禁 io_uring）、capability 裁剪（无 CAP_SYS_PTRACE / CAP_NET_ADMIN）",
+        "出口经 forward proxy（userns / veth / eBPF）到 Sentinel，并用内核级污点追踪 tainted egress 决定是否自动放行"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "宿主侧：权限与凭证，三层互相独立",
+      "items": [
+        "Sentinel 是连接器动作与网络出口的唯一权限裁决者，L4/L7 校验目标并做 SSRF 防护",
+        "hatch-authd 存 OAuth 令牌，只向外发 surrogate 代理令牌；真实凭证由 Sentinel 在网络边界替换，agent 永远看不到真令牌",
+        "privsep 按 cgroup 标识 + 凭证白名单执行业务逻辑，日历 worker 无法索取邮箱凭证",
+        "hatch-safety 用独立模型与分类器检查进出的推理请求/响应；放在 cell 外，攻击者关不掉"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "人在回路：审批是 capability，不是建议",
+      "items": [
+        "Sentinel 判定 ask 时暂停执行，把待批动作直接推到客户端 UI，不经过与 Muse 的对话",
+        "用户答复直接回 Sentinel，由 Sentinel 更新权威审批状态并放行或拒绝",
+        "权限绑定连接器/目的地/用例，支持一次性、会话级、任务级、限时、永久",
+        "只读、已授权、明确低风险的动作自动放行，把阻力留在真正需要同意的地方"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "同一台 VM 内、图里没画满的模块",
+      "items": [
+        "CDP broker：cell 之外的浏览器控制代理，子智能体只看到无障碍树快照，不能跑 JS、不能用 DevTools",
+        "Postgres：持久化应用状态，独立于 runtime cell，也独立于凭证库",
+        "推理与遥测代理：只向外部基础设施暴露受限通路",
+        "浏览器分类器族：检测无关个人数据外泄、DOM / 图片媒体 / 下载文件中的注入、高风险表单提交",
+        "支付：Stripe Link / Shop Pay 走一次性卡号，绑定商户与金额，逐笔人工审批"
+      ]
+    }
+  ]
+}

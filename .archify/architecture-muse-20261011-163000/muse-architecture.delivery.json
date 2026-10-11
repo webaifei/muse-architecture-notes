@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b4b0a3c4-f0d4-4fb3-ade9-5b7c492a534d",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-20261011-163000/candidate.json",
+  "output": "/Users/test/projects/muse-architecture-notes/.archify/architecture-muse-20261011-163000/muse-architecture.html",
+  "specification": {
+    "sha256": "3d0609d27a6aba1f8cded4ebf3cd226b199a22235ecb21bf952b7c626e9f56fa",
+    "bytes": 7571
+  },
+  "artifact": {
+    "sha256": "d07fdea5589d75d08495e9578153c5553279c3ce2ae34bbbd68acc06aa66e65d",
+    "bytes": 777868
+  }
+}
