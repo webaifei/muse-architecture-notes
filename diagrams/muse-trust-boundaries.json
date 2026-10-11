@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "同一个「查看 Gmail」，两种信任结构",
-    "subtitle": "①–⑬ 是 Muse 的十三个步骤，全部落在 runtime cell 之外；左边是传统做法的四步",
+    "subtitle": "①–⑱ 是 Muse 的十八个步骤；两处 hatch-safety（②③④ 与 ⑭–⑱）是回程那一遍，全部落在 runtime cell 之外",
     "locale": "zh-CN",
     "output": ".archify/arch-muse-merged-20261011/muse-merged.html",
     "quality_profile": "showcase"
@@ -257,7 +257,7 @@
       "from": "m_safety",
       "to": "m_model",
       "variant": "emphasis",
-      "label": "②③④⑤ 往返：通过才转发、响应过一遍",
+      "label": "②③④ 往返：通过才转发、响应过一遍",
       "fromSide": "bottom",
       "toSide": "top"
     },
@@ -266,7 +266,7 @@
       "from": "m_model",
       "to": "m_sentinel",
       "variant": "security",
-      "label": "⑥ 提议动作",
+      "label": "⑤ 提议动作",
       "fromSide": "right",
       "toSide": "left"
     },
@@ -275,7 +275,7 @@
       "from": "m_sentinel",
       "to": "m_cell",
       "variant": "emphasis",
-      "label": "⑨ 允许",
+      "label": "⑧ 允许",
       "fromSide": "bottom",
       "toSide": "top"
     },
@@ -292,7 +292,7 @@
       "from": "m_worker",
       "to": "m_authd",
       "variant": "security",
-      "label": "⑩ 按 cgroup 要凭证",
+      "label": "⑨ 按 cgroup 要凭证",
       "fromSide": "bottom",
       "toSide": "top"
     },
@@ -301,7 +301,7 @@
       "from": "m_authd",
       "to": "m_worker",
       "variant": "dashed",
-      "label": "⑪ 只给 surrogate",
+      "label": "⑩ 只给 surrogate",
       "fromSide": "right",
       "toSide": "right"
     },
@@ -310,7 +310,7 @@
       "from": "m_worker",
       "to": "m_sentinel",
       "variant": "security",
-      "label": "⑫ 出网（带 surrogate）",
+      "label": "⑪ 出网（带 surrogate）",
       "fromSide": "right",
       "toSide": "right"
     },
@@ -319,22 +319,42 @@
       "from": "m_sentinel",
       "to": "m_ext",
       "variant": "security",
-      "label": "⑬ 换真凭证后发出",
+      "label": "⑫ 换真凭证后发出",
       "fromSide": "bottom",
       "toSide": "top"
+    },
+    {
+      "id": "mret",
+      "from": "m_cell",
+      "to": "m_user",
+      "label": "⑭–⑱ 回程：再过一遍 hatch-safety 才展示",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "left",
+      "via": [
+        [
+          612,
+          560
+        ],
+        [
+          612,
+          146
+        ]
+      ]
     }
   ],
   "cards": [
     {
       "dot": "rose",
-      "title": "Muse 的 ①–⑬ 步（完整）",
+      "title": "Muse 的 ①–⑱ 步（完整）",
       "items": [
-        "① 用户：查看 Gmail　② cell → hatch-safety 请求过检测　③ safety → Muse Spark 通过才转发",
-        "④⑤ 模型响应 → safety 再过一遍 → 回到 cell",
-        "⑥ cell → Sentinel 提议动作（connector / method / 类别 / scope / 上下文）",
-        "⑦⑧ 需要授权时 Sentinel 直连客户端弹窗（不经过对话）→ 用户答复；授权是能力不是建议",
-        "⑨ Sentinel 允许，逻辑交给 cell 外的 privsep worker　⑩⑪ 按 cgroup 身份 + allowlist 向 authd 要凭证，只拿到 surrogate",
-        "⑫⑬ worker 出网 → Sentinel 做 L4/L7 校验并把 surrogate 换成真凭证 → 到第三方；真 token 只出现在这一跳"
+        "① cell → hatch-safety 请求过检测　② safety → Muse Spark 通过才转发",
+        "③④ 模型响应 → safety 再过一遍 → 回到 cell",
+        "⑤ cell → Sentinel 提议动作（connector / method / 类别 / scope / 上下文）",
+        "⑥⑦ 需要授权时 Sentinel 直连客户端弹窗（不经过对话）→ 用户答复；授权是能力不是建议",
+        "⑧⑨⑩⑪ 允许 → 逻辑交给 cell 外的 privsep worker → 按 cgroup 身份 + allowlist 向 authd 要凭证，只拿到 surrogate",
+        "⑫⑬ worker 出网 → Sentinel 做 L4/L7 校验并把 surrogate 换成真凭证 → 到第三方",
+        "⑭–⑱ worker 结果回到 cell → 带工具结果再问模型，**这一趟进出也要过 hatch-safety** → 最终回复才展示给用户"
       ]
     },
     {
