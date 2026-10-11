@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Muse：一次「查看 Gmail」要过的五道关",
+    "subtitle": "每一道关都在 runtime cell 之外；真凭证从不出现在 agent 能碰到的地方",
+    "locale": "zh-CN",
+    "output": ".archify/seq-muse-20261011/muse-seq.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "用户 / 客户端"
+    },
+    {
+      "id": "cell",
+      "type": "backend",
+      "label": "Hatch daemon",
+      "sublabel": "runtime cell"
+    },
+    {
+      "id": "safety",
+      "type": "security",
+      "label": "hatch-safety",
+      "sublabel": "cell 外"
+    },
+    {
+      "id": "model",
+      "type": "cloud",
+      "label": "Muse Spark",
+      "sublabel": "1.3"
+    },
+    {
+      "id": "sentinel",
+      "type": "security",
+      "label": "Sentinel",
+      "sublabel": "唯一授权方"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "privsep",
+      "sublabel": "真逻辑在这"
+    },
+    {
+      "id": "authd",
+      "type": "security",
+      "label": "hatch-authd",
+      "sublabel": "凭证代理"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 320,
+      "label": "① 进出模型都过 hatch-safety"
+    },
+    {
+      "from": 332,
+      "to": 462,
+      "label": "② 提议 → Sentinel 授权"
+    },
+    {
+      "from": 474,
+      "to": 640,
+      "label": "③ 执行与出网：真凭证只到 Sentinel 这一跳"
+    }
+  ],
+  "messages": [
+    {
+      "id": "m165",
+      "from": "user",
+      "to": "cell",
+      "y": 165,
+      "label": "查看 Gmail 邮箱",
+      "variant": "default"
+    },
+    {
+      "id": "m200",
+      "from": "cell",
+      "to": "safety",
+      "y": 200,
+      "label": "请求先过前置检测",
+      "variant": "security",
+      "note": "独立模型/分类器，跑在 cell 外，攻击者关不掉"
+    },
+    {
+      "id": "m235",
+      "from": "safety",
+      "to": "model",
+      "y": 235,
+      "label": "通过才转发",
+      "variant": "default"
+    },
+    {
+      "id": "m270",
+      "from": "model",
+      "to": "safety",
+      "y": 270,
+      "label": "模型响应",
+      "variant": "return"
+    },
+    {
+      "id": "m305",
+      "from": "safety",
+      "to": "cell",
+      "y": 305,
+      "label": "响应也过一遍",
+      "variant": "security"
+    },
+    {
+      "id": "m345",
+      "from": "cell",
+      "to": "sentinel",
+      "y": 345,
+      "label": "提议动作：connector / method / 类别 / scope / 上下文",
+      "variant": "security",
+      "note": "Sentinel 是唯一授权方，据此生成用户可见的目的说明"
+    },
+    {
+      "id": "m380",
+      "from": "sentinel",
+      "to": "user",
+      "y": 380,
+      "label": "需要授权时直连客户端",
+      "variant": "emphasis",
+      "note": "弹窗在客户端，不经过和 Muse 的对话"
+    },
+    {
+      "id": "m415",
+      "from": "user",
+      "to": "sentinel",
+      "y": 415,
+      "label": "授权：一次性/会话/任务/限时/永久",
+      "variant": "emphasis",
+      "note": "授权是能力不是建议，后续调用必须精确匹配"
+    },
+    {
+      "id": "m450",
+      "from": "sentinel",
+      "to": "worker",
+      "y": 450,
+      "label": "允许；逻辑交给 privsep worker",
+      "variant": "emphasis",
+      "note": "cell 内只剩 tool 壳"
+    },
+    {
+      "id": "m485",
+      "from": "worker",
+      "to": "authd",
+      "y": 485,
+      "label": "按 cgroup + allowlist 要凭证",
+      "variant": "security"
+    },
+    {
+      "id": "m517",
+      "from": "authd",
+      "to": "worker",
+      "y": 517,
+      "label": "只给 surrogate 占位符",
+      "variant": "return",
+      "note": "calendar worker 改参数也要不到 email 凭证"
+    },
+    {
+      "id": "m549",
+      "from": "worker",
+      "to": "sentinel",
+      "y": 549,
+      "label": "发请求（带 surrogate）",
+      "variant": "security"
+    },
+    {
+      "id": "m583",
+      "from": "sentinel",
+      "to": "worker",
+      "y": 583,
+      "label": "L4/L7 校验后换真凭证发出；结果回传",
+      "variant": "security",
+      "note": "校验域名/解析后 IP/端口/方法/路径/解码内容；SSRF 拦内网。真凭证只在出网那一刻出现，不落回 cell"
+    },
+    {
+      "id": "m617",
+      "from": "worker",
+      "to": "cell",
+      "y": 617,
+      "label": "结果 → 回模型前再过一遍",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "核心：agent 永远看不到真凭证",
+      "items": [
+        "hatch-authd 只发 surrogate 占位符；真 token 在 Sentinel 出网那一刻才换上",
+        "所以提示注入让 agent「交出 token」是无效的——它手里根本没有",
+        "OAuth token 存在你自己的 VM 里，不在 Meta 集中基础设施。出网前 Sentinel 还做 L4/L7 校验（域名/解析后 IP/端口/方法/路径/解码内容）并拦 SSRF"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "五道关各管一件事",
+      "items": [
+        "runtime cell：systemd-nspawn，root 映射到非特权宿主用户；禁 io_uring、禁 CAP_SYS_PTRACE / CAP_NET_ADMIN；有自己的根文件系统",
+        "hatch-safety：请求和响应两侧的独立模型，跑在 cell 外",
+        "Sentinel：host 侧的独立 agent，是 connector 动作与所有出网的唯一授权方",
+        "privsep worker：真 connector 逻辑，按 cgroup 身份 + 凭证 allowlist 隔离",
+        "hatch-authd：凭证存储与代理，agent 只见占位符"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "两个容易忽略的设计",
+      "items": [
+        "授权弹窗直连客户端、不经过对话——agent 没法在对话里「说服」用户点同意",
+        "授权是严格能力不是对话建议，绑定具体 connector/目的地/用例，后续调用必须精确匹配"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "纵深防御四层",
+      "items": [
+        "模型层：Muse Spark 1.3 本身被训练抵抗提示注入，接近 SOTA",
+        "进程层：cell 限制系统访问；privsep 限制谁能看到哪个凭证",
+        "凭证层：authd 的 ACL + 每 worker 的凭证 allowlist",
+        "请求层：Sentinel 逐个动作判 + 每次出网都判"
+      ]
+    }
+  ]
+}

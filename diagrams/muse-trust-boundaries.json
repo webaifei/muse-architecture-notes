@@ -1,0 +1,363 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "同一个「查看 Gmail」，两种信任结构",
+    "subtitle": "左边：凭证和 harness 在同一个盒子里。右边：harness 在一个盒子里，凭证在盒子外，中间隔着四道关",
+    "locale": "zh-CN",
+    "output": ".archify/arch-muse-compare-20261011/muse-compare.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "t_user",
+      "type": "external",
+      "label": "用户",
+      "sublabel": "",
+      "pos": [
+        70,
+        120
+      ],
+      "size": [
+        160,
+        52
+      ]
+    },
+    {
+      "id": "t_llm",
+      "type": "cloud",
+      "label": "LLM",
+      "sublabel": "",
+      "pos": [
+        70,
+        250
+      ],
+      "size": [
+        160,
+        52
+      ]
+    },
+    {
+      "id": "t_all",
+      "type": "backend",
+      "label": "harness 代码 + connector CLI",
+      "sublabel": "同一个环境",
+      "pos": [
+        70,
+        400
+      ],
+      "size": [
+        195,
+        60
+      ]
+    },
+    {
+      "id": "t_tok",
+      "type": "security",
+      "label": "凭证 / 环境变量",
+      "sublabel": "",
+      "pos": [
+        345,
+        400
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "t_ext",
+      "type": "external",
+      "label": "第三方服务",
+      "sublabel": "",
+      "pos": [
+        70,
+        550
+      ],
+      "size": [
+        160,
+        52
+      ]
+    },
+    {
+      "id": "m_user",
+      "type": "external",
+      "label": "用户",
+      "sublabel": "",
+      "pos": [
+        700,
+        120
+      ],
+      "size": [
+        160,
+        52
+      ]
+    },
+    {
+      "id": "m_safety",
+      "type": "security",
+      "label": "hatch-safety",
+      "sublabel": "独立模型，在 cell 外",
+      "pos": [
+        700,
+        250
+      ],
+      "size": [
+        195,
+        56
+      ]
+    },
+    {
+      "id": "m_model",
+      "type": "cloud",
+      "label": "Muse Spark 1.3",
+      "sublabel": "",
+      "pos": [
+        700,
+        390
+      ],
+      "size": [
+        160,
+        52
+      ]
+    },
+    {
+      "id": "m_sentinel",
+      "type": "security",
+      "label": "Sentinel",
+      "sublabel": "唯一授权方 · host 侧",
+      "pos": [
+        960,
+        390
+      ],
+      "size": [
+        190,
+        56
+      ]
+    },
+    {
+      "id": "m_cell",
+      "type": "backend",
+      "label": "runtime cell",
+      "sublabel": "Hatch daemon",
+      "pos": [
+        700,
+        530
+      ],
+      "size": [
+        195,
+        60
+      ]
+    },
+    {
+      "id": "m_worker",
+      "type": "backend",
+      "label": "privsep worker",
+      "sublabel": "真 connector 逻辑",
+      "pos": [
+        960,
+        530
+      ],
+      "size": [
+        190,
+        56
+      ]
+    },
+    {
+      "id": "m_authd",
+      "type": "security",
+      "label": "hatch-authd",
+      "sublabel": "凭证存储 + 代理",
+      "pos": [
+        700,
+        670
+      ],
+      "size": [
+        195,
+        56
+      ]
+    },
+    {
+      "id": "m_ext",
+      "type": "external",
+      "label": "第三方服务",
+      "sublabel": "",
+      "pos": [
+        960,
+        670
+      ],
+      "size": [
+        160,
+        52
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "传统：一层沙盒",
+      "wraps": [
+        "t_all",
+        "t_tok"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "runtime cell（agent 只在这里）",
+      "wraps": [
+        "m_cell"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "t1",
+      "from": "t_user",
+      "to": "t_llm",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "t2",
+      "from": "t_llm",
+      "to": "t_all",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "t3",
+      "from": "t_all",
+      "to": "t_ext",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "t4",
+      "from": "t_tok",
+      "to": "t_all",
+      "variant": "dashed",
+      "label": "注入即读到",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "m1",
+      "from": "m_user",
+      "to": "m_safety",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "m2",
+      "from": "m_safety",
+      "to": "m_model",
+      "variant": "emphasis",
+      "label": "通过才转发",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "m3",
+      "from": "m_model",
+      "to": "m_sentinel",
+      "variant": "security",
+      "label": "提议动作",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "m4",
+      "from": "m_sentinel",
+      "to": "m_cell",
+      "variant": "emphasis",
+      "label": "允许",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "m5",
+      "from": "m_cell",
+      "to": "m_worker",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "m6",
+      "from": "m_worker",
+      "to": "m_authd",
+      "variant": "security",
+      "label": "按 cgroup 要凭证",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "m7",
+      "from": "m_authd",
+      "to": "m_worker",
+      "variant": "dashed",
+      "label": "只给 surrogate",
+      "fromSide": "right",
+      "toSide": "right"
+    },
+    {
+      "id": "m8",
+      "from": "m_worker",
+      "to": "m_sentinel",
+      "variant": "security",
+      "label": "出网（带 surrogate）",
+      "fromSide": "right",
+      "toSide": "right"
+    },
+    {
+      "id": "m9",
+      "from": "m_sentinel",
+      "to": "m_ext",
+      "variant": "security",
+      "label": "换真凭证后发出",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "差别的根子：凭证和代码在不在一起",
+      "items": [
+        "传统做法：connector CLI 和 harness 跑在同一个环境里，凭证由 CLI 读环境变量拿到。提示注入改掉 tool 代码 = 直接拿到凭证",
+        "Muse：connector 逻辑搬到 cell 外的 privsep worker，凭证由 authd 代理，worker 只拿到 surrogate 占位符，真 token 在 Sentinel 出网那一刻才换上"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "边界数不一样",
+      "items": [
+        "传统：只有一层沙盒。沙盒一旦被穿透，凭证就在里面",
+        "Muse：cell（systemd-nspawn，root 非真 root、禁 io_uring、禁 CAP_SYS_PTRACE/CAP_NET_ADMIN）+ privsep（cgroup 身份 + 凭证 allowlist）+ authd（ACL）+ Sentinel（逐动作、逐出网）"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "授权不在对话里",
+      "items": [
+        "Sentinel 是 host 侧独立于 Muse 的 agent，是唯一授权方——Muse 只能提议",
+        "需要用户点头时，弹窗直连客户端，不经过对话；agent 没法在对话里说服用户点同意",
+        "授权是严格能力（绑定 connector / 目的地 / 用例），不是对话里的建议"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "纵深防御从上到下四层",
+      "items": [
+        "模型层：Muse Spark 1.3 被训练抵抗提示注入，接近 SOTA",
+        "进程层：cell 限制系统访问，privsep 限制谁能看到哪个凭证",
+        "凭证层：authd 的 ACL + 每 worker 的凭证 allowlist",
+        "请求层：Sentinel 逐动作判 + 每次出网都判（L4/L7 + SSRF）"
+      ]
+    }
+  ]
+}
