@@ -19,7 +19,7 @@ Meta 的 Muse 是一个个人 AI agent。它跑在一个用户专属的云 VM �
 | 图 | 看什么 |
 |---|---|
 | [调用链时序图](diagrams/muse-security-sequence.html) · [PNG](diagrams/muse-security-sequence.png) | 一次「查看 Gmail」要过的五道关：14 步里每一步的安全动作都在 runtime cell 之外 |
-| [信任结构对比图](diagrams/muse-trust-boundaries.html) · [PNG](diagrams/muse-trust-boundaries.png) | 左边传统做法（凭证和 harness 在同一个盒子里），右边 Muse（harness 在盒子里，凭证在盒子外，中间四道关） |
+| [信任结构对比图](diagrams/muse-trust-boundaries.html) · [PNG](diagrams/muse-trust-boundaries.png) | **合并版**：左边传统做法（凭证和 harness 在同一个盒子里），右边 Muse，边上压着 ①–⑬ 的步骤编号，卡片里有完整 13 步 |
 
 > 两图都依据官方安全博客：[中英对照](docs/muse-安全博客-中英对照.md) · [英文原文](docs/muse-安全博客-英文原文.md)
 
